@@ -45,7 +45,7 @@ console.log("market",market)
     if (!market) {
       return { s: 'error', message: 'symbol not found' };
     }
-    const price = await this.marketsService.getLatestPrice(market.id);
+    const price = await this.marketsService.getLatestPrice(market.id,);
 
     return {
       symbol,
@@ -55,13 +55,14 @@ console.log("market",market)
 
 
   @Get(':symbol/stats')
-  async get24hStats(@Param('symbol') symbol: string) {
+  async get24hStats(@Param('symbol') symbol: string,@Query() query: MarketsQueryDto) {
 
     const market = await this.marketDataService.findBySymbol(symbol);
     if (!market) {
       return { s: 'error', message: 'symbol not found' };
     }
-    const price = await this.marketsService.get24hStats(market.id);
+    const price = await this.marketsService.get24hStats(market.id,query.from,
+      query.to);
 
     return {
       symbol,

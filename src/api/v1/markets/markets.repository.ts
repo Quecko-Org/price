@@ -66,6 +66,7 @@ try {
 
   async getLatestPrice(
     marketId: number,
+  
   ) {
 
     const rows = await this.dataSource.query(`
@@ -84,17 +85,28 @@ try {
 
   async get24hStats(
     marketId: number,
+    from?: number,
+    to?: number,
   ) {
 
-    const rows = await this.dataSource.query(`
-      SELECT close
-      FROM candles_1m
-      WHERE market_id = $1
-      ORDER BY "openTime" DESC
-      LIMIT 1
-    `,[marketId]);
+   let froms = Math.floor(Date.now() / 1000);
+let tos = froms - (24 * 60 * 60); // 24 hou
 
-    return rows;
+console.log("df",froms,tos)
+    const row = await this.dataSource.query(`
+    SELECT
+    first(open, "openTime") as open,
+    last(close, "openTime") as close,
+    max(high) as high,
+    min(low) as low,
+    sum(volume) as volume
+  FROM aggregated_candles_1m
+  WHERE "marketId" = $1
+  AND "openTime" >= NOW() - INTERVAL '24 hours'
+  `,[marketId]);
+  return row;
+
+
   }
 
 
