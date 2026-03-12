@@ -1,45 +1,76 @@
-
 import { EXCHANGE_WEIGHTS } from "../constants/exchanges.constants";
 import { ExchangeCandle } from "../types/candle.type";
 
+function median(values: number[]) {
+  const sorted = [...values].sort((a,b)=>a-b);
+  const mid = Math.floor(sorted.length/2);
+
+  return sorted.length % 2
+    ? sorted[mid]
+    : (sorted[mid-1] + sorted[mid]) / 2;
+}
+
 export function aggregateCandles(candles: ExchangeCandle[]) {
+
   if (!candles.length) return null;
 
-  // Filter valid candles
-  const valid = candles
-    .filter(c =>
-      Number.isFinite(c.open) &&
-      Number.isFinite(c.close) &&
-      Number.isFinite(c.high) &&
-      Number.isFinite(c.low) &&
-      Number.isFinite(c.volume) &&
-      c.volume > 0,
-    )
-    .sort((a, b) => a.openTime - b.openTime); // chronological
+  // 1️⃣ Validate candles
+  const valid = candles.filter(c =>
+    Number.isFinite(c.open) &&
+    Number.isFinite(c.close) &&
+    Number.isFinite(c.high) &&
+    Number.isFinite(c.low) &&
+    Number.isFinite(c.volume) &&
+    c.volume > 0
+  );
 
   if (!valid.length) return null;
+
+  // 2️⃣ Median price
+  const closes = valid.map(c => c.close);
+  const medianPrice = median(closes);
+
+  // 3️⃣ Remove outliers (±5%)
+  const filtered = valid.filter(c => {
+    const diff = Math.abs(c.close - medianPrice) / medianPrice;
+    return diff < 0.05;
+  });
+
+  if (!filtered.length) return null;
+
+  // 4️⃣ Sort by time
+  filtered.sort((a,b)=>a.openTime - b.openTime);
 
   let high = -Infinity;
   let low = Infinity;
   let volume = 0;
+
   let weightedCloseSum = 0;
   let weightSum = 0;
 
-  // Open is first candle, Close is last candle
-  const open = valid[0].open;
-  const close = valid[valid.length - 1].close;
+  const open = filtered[0].open;
+  const close = filtered[filtered.length-1].close;
 
-  for (const c of valid) {
+  for (const c of filtered) {
+
     const trust = EXCHANGE_WEIGHTS[c.exchange] ?? 0.3;
-    const weight = trust * Math.sqrt(c.volume);
- 
+
+    const liquidityWeight = Math.sqrt(c.volume);
+
+    const weight = trust * liquidityWeight;
+
     high = Math.max(high, c.high);
     low = Math.min(low, c.low);
 
     volume += c.volume;
+
     weightedCloseSum += c.close * weight;
     weightSum += weight;
   }
+
+  const weightedClose = weightSum
+    ? weightedCloseSum / weightSum
+    : close;
 
   return {
     open,
@@ -47,9 +78,83 @@ export function aggregateCandles(candles: ExchangeCandle[]) {
     low,
     close,
     volume,
-    weightedClose: weightSum ? weightedCloseSum / weightSum : close, // VWAP style
+    weightedClose
   };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// try this if above not working
+
+
+
+
+// import { EXCHANGE_WEIGHTS } from "../constants/exchanges.constants";
+// import { ExchangeCandle } from "../types/candle.type";
+
+// export function aggregateCandles(candles: ExchangeCandle[]) {
+//   if (!candles.length) return null;
+
+//   // Filter valid candles
+//   const valid = candles
+//     .filter(c =>
+//       Number.isFinite(c.open) &&
+//       Number.isFinite(c.close) &&
+//       Number.isFinite(c.high) &&
+//       Number.isFinite(c.low) &&
+//       Number.isFinite(c.volume) &&
+//       c.volume > 0,
+//     )
+//     .sort((a, b) => a.openTime - b.openTime); // chronological
+
+//   if (!valid.length) return null;
+
+//   let high = -Infinity;
+//   let low = Infinity;
+//   let volume = 0;
+//   let weightedCloseSum = 0;
+//   let weightSum = 0;
+
+//   // Open is first candle, Close is last candle
+//   const open = valid[0].open;
+//   const close = valid[valid.length - 1].close;
+
+//   for (const c of valid) {
+//     const trust = EXCHANGE_WEIGHTS[c.exchange] ?? 0.3;
+//     const weight = trust * Math.sqrt(c.volume);
+ 
+//     high = Math.max(high, c.high);
+//     low = Math.min(low, c.low);
+
+//     volume += c.volume;
+//     weightedCloseSum += c.close * weight;
+//     weightSum += weight;
+//   }
+
+//   return {
+//     open,
+//     high,
+//     low,
+//     close,
+//     volume,
+//     weightedClose: weightSum ? weightedCloseSum / weightSum : close, // VWAP style
+//   };
+// }
 
 
 
