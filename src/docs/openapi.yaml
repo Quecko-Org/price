@@ -1,0 +1,281 @@
+openapi: 3.0.3
+info:
+  title: Price API
+  description: API for Price Aggregator Project
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Local server
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        plan:
+          type: string
+          enum: [basic, growth, pro]
+          example: basic
+        newsletter:
+          type: boolean
+    Market:
+      type: object
+      properties:
+        openTime:
+          type: string
+          format: date-time
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: number
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Auth
+    description: User authentication and account management
+  - name: Markets
+    description: Market info and coin prices
+  - name: Markets
+    description: Market data for different intervals
+
+paths:
+  /auth/signup:
+    post:
+      tags: [Auth]
+      summary: Sign up a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password, plan, agreeToTerms]
+              properties:
+                email:
+                  type: string
+                  example: john@example.com
+                name:
+                  type: string
+                  example: John Doe
+                password:
+                  type: string
+                  example: strongPassword123
+                plan:
+                  type: string
+                  enum: [basic, growth, pro]
+                  example: basic
+                newsletter:
+                  type: boolean
+                  example: true
+                agreeToTerms:
+                  type: boolean
+                  example: true
+      responses:
+        201:
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: User signed up successfully
+                  user:
+                    $ref: '#/components/schemas/User'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  example: john@example.com
+                password:
+                  type: string
+                  example: strongPassword123
+      responses:
+        200:
+          description: User signed in successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    example: jwt.token.here
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request password reset link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  example: john@example.com
+      responses:
+        200:
+          description: Password reset token sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password reset link sent
+                  token:
+                    type: string
+                    example: 32-char-reset-token
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Reset password using token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                  example: 32-char-reset-token
+                newPassword:
+                  type: string
+                  example: NewStrongPassword123
+      responses:
+        200:
+          description: Password updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password reset successful
+
+  /api/v1/markets/{symbol}:
+    get:
+      tags: [Markets]
+      summary: Get market info for a symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: BTC
+        - name: cache-bust
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        200:
+          description: Market info retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  symbol:
+                    type: string
+                    example: BTC
+                  base:
+                    type: string
+                    example: BTC
+                  quote:
+                    type: string
+                    example: USD
+                  marketId:
+                    type: integer
+                    example: 6262
+                  price:
+                    type: number
+                    example: 27354.12
+
+  /api/v1/markets/{interval}/{marketId}:
+    get:
+      tags: [Markets]
+      summary: Get Market data for marketId
+      parameters:
+        - name: interval
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [1m, 5m, 15m, 1h, 4h, 1d, 1w]
+            example: 1m
+        - name: marketId
+          in: path
+          required: true
+          schema:
+            type: integer
+            example: 6262
+        - name: from
+          in: query
+          required: false
+          description: Unix timestamp (seconds)
+          schema:
+            type: integer
+            example: 1773241043
+        - name: to
+          in: query
+          required: false
+          description: Unix timestamp (seconds)
+          schema:
+            type: integer
+            example: 1773327443
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            example: 100
+      responses:
+        200:
+          description: Market data retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Market'

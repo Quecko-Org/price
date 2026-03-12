@@ -288,7 +288,7 @@ export class MexcService {
 
       const firstCandleTime = new Date(candle[0]);
 
-      console.log("responseresponse", firstCandleTime, data.length, candle[0])
+      // console.log("responseresponse", firstCandleTime, data.length, candle[0])
       process.exit();
       // const data = response.data;
 
