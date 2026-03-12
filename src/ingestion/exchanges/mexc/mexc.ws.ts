@@ -22,6 +22,8 @@ export class MexcWebSocket {
   private readonly logger = new Logger(MexcWebSocket.name);
   private ws?: WebSocket;
   private pingInterval?: NodeJS.Timeout;
+  private symbolMarketMap: Record<string, number> = {};
+  private symbolMetaMap:  Record<string, { base: string; quote: string }> = {};
 
   private symbols: string[] = [];
   private lastCandle: Record<string, Candle> = {};
@@ -29,130 +31,114 @@ export class MexcWebSocket {
     return value ? Number(value) : 0;
   }
   constructor(
+    // @Inject(forwardRef(() => AggregationService))
     private readonly aggregationService: AggregationService,
   ) {}
+  private safeSend(payload: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(payload));
+    }
+  }
+  connect(symbols: string[], symbolMarketMap: Record<string, number>,
+    symbolMetaMap: Record<string, { base: string; quote: string }>
+    ) {
+      console.log("mexc",symbols)
 
-  connect(symbols: string[], symbolMap: Record<string, number>) {
     this.symbols = symbols;
+    this.symbolMarketMap = symbolMarketMap;
+    this.symbolMetaMap = symbolMetaMap;
 
-    // MEXC Spot WebSocket endpoint
     this.ws = new WebSocket('wss://wbs-api.mexc.com/ws');
-
+  
     this.ws.on('open', () => {
-      this.logger.log('Connected to MEXC SPOT WebSocket');
-
-      // Subscribe to kline streams for all symbols
-      // Format: spot@public.kline.v3.api.pb@<SYMBOL>@<INTERVAL>
-      // Available intervals: Min1, Min5, Min15, Min30, Min60, Hour4, Hour8, Day1, Week1, Month1
-      const params = symbols.map(symbol => 
-        `spot@public.kline.v3.api.pb@${symbol}@Min1`
+      this.logger.log('Connected to MEXC Spot WebSocket');
+  
+      const params = symbols.map(
+        s => `spot@public.kline.v3.api.pb@${s}@Min1`
       );
-
-      this.ws!.send(
-        JSON.stringify({
-          method: 'SUBSCRIPTION',
-          params: params,
-        }),
-      );
-
-      // Keep-alive ping every 20 seconds (required to keep connection alive)
+  
+      this.safeSend({
+        method: 'SUBSCRIPTION',
+        params,
+      });
+  
+      /** keep connection alive */
       this.pingInterval = setInterval(() => {
-        this.ws?.send(JSON.stringify({ method: 'PING' }));
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ method: 'PING' }));
+        }
       }, 20_000);
     });
-
+  
     this.ws.on('message', (data: Buffer) => {
       try {
-        // Check if this is a JSON message (PONG response)
-        if (data[0] === 0x7b) { // '{' character indicates JSON
-          const json = JSON.parse(data.toString('utf8'));
-          
-          // Ignore PONG responses
-          if (json?.code === 0 && json?.msg === 'PONG') {
-            return;
+  
+        /** JSON responses (PONG, confirmations) */
+        if (data[0] === 0x7b) {
+  
+          const json = JSON.parse(data.toString());
+  
+          if (json?.msg === 'PONG') return;
+  
+          if (json?.msg?.includes('spot@public.kline')) {
+            this.logger.log(`Subscribed: ${json.msg}`);
           }
-          
-          // Log subscription confirmations
-          if (json?.msg && json.msg.includes('spot@public.kline')) {
-            this.logger.log(`Subscription confirmed: ${json.msg}`);
-          }
+  
           return;
         }
-
-        // Decode protobuf message
+  
+        /** protobuf message */
         const wrapper = mexc.PushDataV3ApiWrapper.decode(data);
-        
-        // Extract kline data
-        const klineData = wrapper.publicSpotKline;
-        if (!klineData) {
-          return;
-        }
-
+  
+        const kline = wrapper.publicSpotKline;
+        if (!kline) return;
+  
         const symbol = wrapper.symbol;
-        const symbolId = symbolMap[symbol];
-        
-        if (!symbolId) {
-          this.logger.warn(`Symbol ${symbol} not found in symbolMap`);
-          return;
-        }
-        
-        // Parse kline data
-        // Note: timestamps are in seconds, need to convert to milliseconds
-        const openTime = Number(klineData.windowStart) * 1000;
-        console.log("ashar",openTime,klineData)
-        const newCandle = {
-          exchange: Exchange.MEXC,
-          openTime,
-          open: this.toNumber(klineData.openingPrice),
-          high: this.toNumber(klineData.highestPrice),
-          low: this.toNumber(klineData.lowestPrice),
-          close: this.toNumber(klineData.closingPrice),
-          volume: this.toNumber(klineData.volume),
-          isFinal: false,
-        };
-
-        const prev = this.lastCandle[symbol];
-
-        // Detect closed candle (timestamp changed)
-        if (prev && prev.openTime !== newCandle.openTime) {
-          // Previous candle is now final
-          this.aggregationService.handleLiveCandle(
-            symbolId,
-            Exchange.MEXC,
-            {
-              exchange:Exchange.MEXC,
-              ...prev,
-              isFinal: true,
-            },
-          );
-        }
-
-        // Always send live update
+  
+        const key = `${Exchange.MEXC}:${symbol}`;
+        const marketId = this.symbolMarketMap[key];
+  
+        if (!marketId) return;
+        const meta = this.symbolMetaMap[key];
+        if (!meta) return;
+        const openTime = Number(kline.windowStart) * 1000;
+  
         this.aggregationService.handleLiveCandle(
-          symbolId,
+          marketId,
           Exchange.MEXC,
-          newCandle,
+          {
+            exchange: Exchange.MEXC,
+            openTime,
+            quote: meta.quote,  
+            open: this.toNumber(kline.openingPrice),
+            high: this.toNumber(kline.highestPrice),
+            low: this.toNumber(kline.lowestPrice),
+            close: this.toNumber(kline.closingPrice),
+            volume: this.toNumber(kline.volume),
+            isFinal: false,
+          },
         );
-
-        this.lastCandle[symbol] = newCandle;
-
+  
       } catch (err) {
-        this.logger.error('Failed parsing MEXC SPOT message',err);
+        this.logger.error('MEXC message parse error', err);
       }
     });
-
+  
     this.ws.on('close', () => {
+      this.logger.warn('MEXC WS closed. Reconnecting in 3s');
+  
       clearInterval(this.pingInterval);
-      this.logger.warn('MEXC SPOT WebSocket closed. Reconnecting in 3s...');
-      setTimeout(() => this.connect(this.symbols, symbolMap), 3000);
+  
+      setTimeout(() => {
+        this.connect(this.symbols, this.symbolMarketMap,this.symbolMetaMap);
+      }, 3000);
     });
-
-    this.ws.on('error', (err) => {
-      this.logger.error('MEXC SPOT WebSocket error', err);
+  
+    this.ws.on('error', err => {
+      this.logger.error('MEXC WS error', err);
       this.ws?.close();
     });
   }
-
   disconnect() {
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
@@ -161,6 +147,12 @@ export class MexcWebSocket {
       this.ws.close();
     }
   }
+
+
+
+
+
+  
 }
 
 

@@ -9,7 +9,8 @@ export class BinanceWebSocket {
   private ws?: WebSocket;
   private symbols: string[] = [];
   private reconnectTimeout?: NodeJS.Timeout;
-  private symbolMap: Record<string, number> = {};
+  private symbolMarketMap: Record<string, number> = {};
+  private symbolMetaMap:  Record<string, { base: string; quote: string }> = {};
 
   //   Because string symbols are slow and inconsistent across exchanges.
   //   Example problem
@@ -33,54 +34,44 @@ export class BinanceWebSocket {
     private readonly aggregationService: AggregationService,
   ) { }
 
-  connect(symbols: string[],symbolMap: Record<string, number>) {
+  connect(symbols: string[], 
+    symbolMarketMap: Record<string, number>,  
+    symbolMetaMap: Record<string, { base: string; quote: string }>
+    ) {
+      console.log("binance",symbols)
     this.symbols = symbols;
-    this.symbolMap =symbolMap;
-    console.log("symbolMap",symbols,symbolMap)
-    const streams = symbols
-      .map(s => `${s.toLowerCase()}@kline_1m`)
-      .join('/');
+    this.symbolMarketMap = symbolMarketMap;
+    this.symbolMetaMap = symbolMetaMap;
 
+    const streams = symbols.map(s => `${s.toLowerCase()}@kline_1m`).join('/');
     const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
-
+ 
     this.ws = new WebSocket(url);
 
-    this.ws.on('open', () => {
-      this.logger.log('Binance WS connected');
-    });
+    this.ws.on('open', () => this.logger.log('Binance WS connected'));
 
     this.ws.on('message', msg => {
       const data = JSON.parse(msg.toString());
-
       if (!data?.data?.k) return;
 
       const k = data.data.k;
-      if (!k) return;
+      const key = `${Exchange.BINANCE}:${k.s}`;
+      const marketId = this.symbolMarketMap[key];
+      if (!marketId) return;
 
-      console.log("kkk", k,        Exchange.BINANCE,
-      )
-
-      const symbolId = symbolMap[k.s];
-      console.log("k.s",symbolId)
-      if (!symbolId) return;
-
-      this.aggregationService.handleLiveCandle(
-          symbolId,
-          Exchange.BINANCE,
-        {
-         exchange: Exchange.BINANCE,
-          openTime: k.t,
-          open: +k.o,
-          high: +k.h,
-          low: +k.l,
-          close: +k.c,
-          volume: +k.v,
-          isFinal: k.x, 
-        },
-      );
-
-
-      
+      const meta = this.symbolMetaMap[key];
+      if (!meta) return;
+      this.aggregationService.handleLiveCandle(marketId, Exchange.BINANCE, {
+        exchange: Exchange.BINANCE,
+        openTime: k.t,
+        quote: meta.quote,  
+        open: +k.o,
+        high: +k.h,
+        low: +k.l,
+        close: +k.c,
+        volume: +k.v,
+        isFinal: k.x,
+      });
     });
 
     this.ws.on('close', () => {
@@ -96,10 +87,9 @@ export class BinanceWebSocket {
 
   private reconnect() {
     if (this.reconnectTimeout) return;
-
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = undefined;
-      this.connect(this.symbols,this.symbolMap);
+      this.connect(this.symbols, this.symbolMarketMap,this.symbolMetaMap);
     }, 3_000);
   }
 

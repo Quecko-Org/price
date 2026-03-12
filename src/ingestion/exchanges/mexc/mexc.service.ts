@@ -9,10 +9,10 @@ import { firstValueFrom } from 'rxjs';
 @Injectable()
 export class MexcService {
   constructor
-  (
-    private readonly symbolsService: SymbolsService,
-    private readonly httpService: HttpService
-    
+    (
+      private readonly symbolsService: SymbolsService,
+      private readonly httpService: HttpService
+
     ) { }
 
   // GET /api/v3/exchangeInfo Know which symbols exist
@@ -39,11 +39,10 @@ export class MexcService {
         symbol: s.symbol,
         base: s.baseAsset,
         quote: s.quoteAsset,
-        status: s.status
+        // status: s.status
       }));
 
-    apiSymbols = [{ symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT' }]
-    await this.symbolsService.upsertSymbols(Exchange.MEXC, apiSymbols);
+    await this.symbolsService.syncExchangeSymbols(Exchange.MEXC, apiSymbols);
 
   }
 
@@ -78,50 +77,50 @@ export class MexcService {
       'https://www.okx.com/api/v5/market/history-candles',
       {
         params: {
-          after:"1564893002000",
+          after: "1564893002000",
           instId: 'BTC-USDT',
           bar: '1m',
           limit: 2,
         },
       },
     );
-  
+
     const candles = response.data?.data ?? [];
-  console.log("ccc",candles)
+    console.log("ccc", candles)
     // if (!candles.length) 
-  
+
     // OKX returns newest → oldest
     const firstCandle = candles[candles.length - 1];
     // console.log("ccc",firstCandle)
 
     return firstCandle[0];
-  //   let low = Date.parse("2018-01-01T00:00:00Z"); // very early timestamp
-  //   let high = Date.now();
-  //   let found;
-  
-  //   while (low <= high) {
-  //     const mid = Math.floor((low + high) / 2); // ✅ use Math.floor, not >>
-  
-  //     const { data } = await axios.get(`${this.baseUrl}/klines`, {
-  //       params: { symbol, interval: "1m", startTime: mid, limit: 1 }
-  //     });
-  
-  //     if (data.length) {
-  //       console.log("mex service fetchFirstCandleTime ",mid,low,high,data)
+    //   let low = Date.parse("2018-01-01T00:00:00Z"); // very early timestamp
+    //   let high = Date.now();
+    //   let found;
 
-  //       found = data[0];
-  //       high = mid - 1; // go earlier
-  //     } else {
-  //       low = mid + 1;  // go later
-  //     }
-  
+    //   while (low <= high) {
+    //     const mid = Math.floor((low + high) / 2); // ✅ use Math.floor, not >>
 
-  //     // small delay to avoid rate limits
-  //     await new Promise(r => setTimeout(r, 50));
-  //   }
+    //     const { data } = await axios.get(`${this.baseUrl}/klines`, {
+    //       params: { symbol, interval: "1m", startTime: mid, limit: 1 }
+    //     });
 
-  //   if (!found) throw new Error("No candle found for this symbol.");
-  // return new Date()
+    //     if (data.length) {
+    //       console.log("mex service fetchFirstCandleTime ",mid,low,high,data)
+
+    //       found = data[0];
+    //       high = mid - 1; // go earlier
+    //     } else {
+    //       low = mid + 1;  // go later
+    //     }
+
+
+    //     // small delay to avoid rate limits
+    //     await new Promise(r => setTimeout(r, 50));
+    //   }
+
+    //   if (!found) throw new Error("No candle found for this symbol.");
+    // return new Date()
     // const res = await axios.get(`${this.baseUrl}/klines`, {
     //   params: {
     //     symbol,
@@ -131,8 +130,8 @@ export class MexcService {
     //   },
     // });
 
-  // console.log("mex service fetchFirstCandleTime ",res.data)
-  //   return new Date(res.data[0][0]); // openTime
+    // console.log("mex service fetchFirstCandleTime ",res.data)
+    //   return new Date(res.data[0][0]); // openTime
   }
 
 
@@ -174,7 +173,7 @@ export class MexcService {
         interval,
         1230768000000, // 2009-01-01
       );
-  console.log("initialCandle",initialCandle)
+      console.log("initialCandle", initialCandle)
       if (!initialCandle) {
         // Symbol might be very new, try recent timestamp
         const recentCandle = await this.getFirstCandleFromTimestamp(
@@ -182,7 +181,7 @@ export class MexcService {
           interval,
           Date.now() - 365 * 24 * 60 * 60 * 1000, // 1 year ago
         );
-        console.log("recentCandle",recentCandle)
+        console.log("recentCandle", recentCandle)
 
         if (!recentCandle) {
           return {
@@ -197,7 +196,7 @@ export class MexcService {
 
       // Step 2: Use binary search to find the absolute first candle
       const firstCandle = await this.binarySearchFirstCandle(symbol, interval);
-      console.log("firstCandle",firstCandle)
+      console.log("firstCandle", firstCandle)
 
       if (firstCandle) {
         this.logger.log(`✅ Found first listing candle for ${symbol} at ${firstCandle.firstCandleTime}`);
@@ -226,7 +225,7 @@ export class MexcService {
    */
   private async binarySearchFirstCandle(
     symbol: string,
-    interval : string ='1d',
+    interval: string = '1d',
   ): Promise<any> {
     const now = Date.now();
     let left = 1230768000000; // 2009-01-01
@@ -273,13 +272,13 @@ export class MexcService {
     startTime: number,
   ): Promise<any | null> {
     try {
-      console.log("startTime",startTime)
+      console.log("startTime", startTime)
 
       const response = await axios.get(`${this.baseUrl}/klines`, {
         params: {
           symbol,
           interval: '1m',
-          startTime:1727481600000,
+          startTime: 1727481600000,
           limit: 1000,
         },
       });
@@ -289,8 +288,8 @@ export class MexcService {
 
       const firstCandleTime = new Date(candle[0]);
 
-console.log("responseresponse",firstCandleTime,data.length,candle[0])
-process.exit();
+      console.log("responseresponse", firstCandleTime, data.length, candle[0])
+      process.exit();
       // const data = response.data;
 
       if (data && Array.isArray(data) && data.length > 0) {
@@ -320,7 +319,7 @@ process.exit();
         await this.sleep(2000);
         return this.getFirstCandleFromTimestamp(symbol, interval, startTime);
       }
-      
+
       // Symbol doesn't exist or no data
       return null;
     }
@@ -341,78 +340,78 @@ process.exit();
 
 
 
-    async fetchFirstCandleTime(symbol: string): Promise<string> {
-      this.logger.log(`Finding first listing time for ${symbol}...`);
-  
-      const dailyTime = await this.binarySearch(symbol, '1d', 1230768000000, Date.now());
-      
-      if (!dailyTime) {
-        throw new Error(`No trading data found for ${symbol}`);
-      }
-  
-      const twoDays = 2 * 24 * 60 * 60 * 1000;
-      const hourlyTime = await this.binarySearch(
-        symbol,
-        '60m',
-        dailyTime - twoDays,
-        dailyTime + twoDays,
-      );
-  
-      const firstTime = new Date(hourlyTime || dailyTime).toISOString();
-      this.logger.log(`✅ First listing time: ${firstTime}`);
-      
-      return firstTime;
+  async fetchFirstCandleTime(symbol: string): Promise<string> {
+    this.logger.log(`Finding first listing time for ${symbol}...`);
+
+    const dailyTime = await this.binarySearch(symbol, '1d', 1230768000000, Date.now());
+
+    if (!dailyTime) {
+      throw new Error(`No trading data found for ${symbol}`);
     }
-  
-    private async binarySearch(
-      symbol: string,
-      interval: string,
-      left: number,
-      right: number,
-    ): Promise<number | null> {
-      let earliest: number | null = null;
-      let iterations = 0;
-  console.log("cccc",left <= right && iterations < 30)
-      while (left <= right && iterations < 30) {
-        iterations++;
-        const mid = Math.floor((left + right) / 2);
-        const candleTime = await this.checkCandleExists(symbol, interval, mid);
-  
-        if (candleTime) {
-          earliest = candleTime;
-          right = candleTime - 1;
-        } else {
-          left = mid + 1;
-        }
-  
-        await this.sleep(100);
+
+    const twoDays = 2 * 24 * 60 * 60 * 1000;
+    const hourlyTime = await this.binarySearch(
+      symbol,
+      '60m',
+      dailyTime - twoDays,
+      dailyTime + twoDays,
+    );
+
+    const firstTime = new Date(hourlyTime || dailyTime).toISOString();
+    this.logger.log(`✅ First listing time: ${firstTime}`);
+
+    return firstTime;
+  }
+
+  private async binarySearch(
+    symbol: string,
+    interval: string,
+    left: number,
+    right: number,
+  ): Promise<number | null> {
+    let earliest: number | null = null;
+    let iterations = 0;
+    console.log("cccc", left <= right && iterations < 30)
+    while (left <= right && iterations < 30) {
+      iterations++;
+      const mid = Math.floor((left + right) / 2);
+      const candleTime = await this.checkCandleExists(symbol, interval, mid);
+
+      if (candleTime) {
+        earliest = candleTime;
+        right = candleTime - 1;
+      } else {
+        left = mid + 1;
       }
-  
-      return earliest;
+
+      await this.sleep(100);
     }
-  
-    private async checkCandleExists(
-      symbol: string,
-      interval: string,
-      startTime: number,
-    ): Promise<number | null> {
-      try {
-     console.log("sssss",new Date(startTime),startTime)
-        const {data}  = await axios.get(`${this.baseUrl}/klines`, {
-          params: { symbol: symbol.toUpperCase(), interval, startTime, limit: 1 },
-          timeout: 10000,
-        });
-  console.log("ree",data[0]?.[0])
-        return data?.[0]?.[0] || null;
-      } catch (error) {
-        if (error.response?.status === 429) {
-          await this.sleep(2000);
-          return this.checkCandleExists(symbol, interval, startTime);
-        }
-        return null;
+
+    return earliest;
+  }
+
+  private async checkCandleExists(
+    symbol: string,
+    interval: string,
+    startTime: number,
+  ): Promise<number | null> {
+    try {
+      console.log("sssss", new Date(startTime), startTime)
+      const { data } = await axios.get(`${this.baseUrl}/klines`, {
+        params: { symbol: symbol.toUpperCase(), interval, startTime, limit: 1 },
+        timeout: 10000,
+      });
+      console.log("ree", data[0]?.[0])
+      return data?.[0]?.[0] || null;
+    } catch (error) {
+      if (error.response?.status === 429) {
+        await this.sleep(2000);
+        return this.checkCandleExists(symbol, interval, startTime);
       }
+      return null;
     }
-  
+  }
+
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

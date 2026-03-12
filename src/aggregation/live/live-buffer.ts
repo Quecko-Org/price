@@ -1,22 +1,36 @@
-import { ExchangeCandle, LiveBufferEntry } from "@/common/types/candle.type";
+import { LiveBufferEntry } from "@/common/types/candle.type";
 
 export class LiveCandleBuffer {
-  private buffer = new Map<string, ExchangeCandle[] | any>();
+  private buffer = new Map<string, LiveBufferEntry>();
 
-  private key(symbolId: number, openTime: number) {
-    return `${symbolId}:${openTime}`;
+  private key(marketId: number, openTime: number) {
+    return `${marketId}:${openTime}`;
   }
 
-  add(symbolId: number, candle: LiveBufferEntry) {
-    const k = this.key(symbolId, candle.openTime);
-    this.buffer.set(k, candle);
+  get(marketId: number, openTime: number) {
+    return this.buffer.get(this.key(marketId, openTime));
   }
 
-  get(symbolId: number, openTime: number) {
-    return this.buffer.get(this.key(symbolId, openTime)) || [];
+  add(marketId: number, entry: LiveBufferEntry) {
+    this.buffer.set(this.key(marketId, entry.openTime), entry);
   }
 
-  clear(symbolId: number, openTime: number) {
-    this.buffer.delete(this.key(symbolId, openTime));
+  clear(marketId: number, openTime: number) {
+    this.buffer.delete(this.key(marketId, openTime));
+  }
+
+  entries() {
+    const result: {
+      symbolId: number;
+      openTime: number;
+      candle: LiveBufferEntry;
+    }[] = [];
+
+    for (const [key, candle] of this.buffer.entries()) {
+      const [symbolId, openTime] = key.split(':').map(Number);
+      result.push({ symbolId, openTime, candle });
+    }
+
+    return result;
   }
 }

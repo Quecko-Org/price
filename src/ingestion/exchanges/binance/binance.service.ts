@@ -24,24 +24,22 @@ export class BinanceService {
     }
   }
 
+
   async fetchAndStoreSymbols() {
     const res = await axios.get(`${this.baseUrl}/exchangeInfo`);
-    let apiSymbols = await res.data.symbols
-      .filter(s => s.status === 'TRADING')
-      .map(s => ({
+  
+    const apiSymbols = res.data.symbols
+      .filter((s: any) => s.status === 'TRADING')
+      .map((s: any) => ({
         symbol: s.symbol,
         base: s.baseAsset,
         quote: s.quoteAsset,
       }));
-    apiSymbols.map((s) => {
-      
-      if (s.quote != 'USDT') {
-        console.log(s)
-      }
-    })
-    apiSymbols = [{ symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT', status: '1' }]
-    await this.symbolsService.upsertSymbols(Exchange.BINANCE, apiSymbols);
-
+  
+    await this.symbolsService.syncExchangeSymbols(
+      Exchange.BINANCE,
+      apiSymbols,
+    );
   }
 
 

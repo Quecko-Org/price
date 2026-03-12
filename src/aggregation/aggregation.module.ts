@@ -7,12 +7,14 @@ import { AggregationService } from './aggregation.service';
 import { ExchangesModule } from '@/ingestion/exchanges/exchanges.module';
 import { SymbolsModule } from '@/ingestion/symbols/symbols.module';
 import { SymbolExchangeEntity } from '@/ingestion/symbols/entities/symbol-exchange.entity';
+import { MarketEntity } from '@/market-data/market.entity';
 
 @Module({
     imports: [
       TypeOrmModule.forFeature([
         Candle1mEntity,
-        SymbolExchangeEntity
+        SymbolExchangeEntity,
+        MarketEntity,
       ]),
       forwardRef(() => ExchangesModule), // ✅ FIX
       SymbolsModule

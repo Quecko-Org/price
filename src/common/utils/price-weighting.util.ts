@@ -1,63 +1,184 @@
-import { EXCHANGE_WEIGHTS } from '../constants/exchanges.constants';
-import { ExchangeCandle } from '../types/candle.type';
 
-export function aggregateCandles(
-  candles: ExchangeCandle[],
-) {
+import { EXCHANGE_WEIGHTS } from "../constants/exchanges.constants";
+import { ExchangeCandle } from "../types/candle.type";
+
+export function aggregateCandles(candles: ExchangeCandle[]) {
   if (!candles.length) return null;
 
-  let weightSum = 0;
-  let open = 0;
-  let close = 0;
-  let high: number | null = null;
-  let low: number | null = null;
+  // Filter valid candles
+  const valid = candles
+    .filter(c =>
+      Number.isFinite(c.open) &&
+      Number.isFinite(c.close) &&
+      Number.isFinite(c.high) &&
+      Number.isFinite(c.low) &&
+      Number.isFinite(c.volume) &&
+      c.volume > 0,
+    )
+    .sort((a, b) => a.openTime - b.openTime); // chronological
+
+  if (!valid.length) return null;
+
+  let high = -Infinity;
+  let low = Infinity;
   let volume = 0;
+  let weightedCloseSum = 0;
+  let weightSum = 0;
 
+  // Open is first candle, Close is last candle
+  const open = valid[0].open;
+  const close = valid[valid.length - 1].close;
 
-  for (const c of candles) {
-    if (
-      !Number.isFinite(c.open) ||
-      !Number.isFinite(c.close) ||
-      !Number.isFinite(c.high) ||
-      !Number.isFinite(c.low) ||
-      !Number.isFinite(c.volume) ||
-      c.volume <= 0
-    ) {
-      continue;
-    }
-
+  for (const c of valid) {
     const trust = EXCHANGE_WEIGHTS[c.exchange] ?? 0.3;
-
-    // sqrt volume reduces manipulation
-    let weight = trust * Math.sqrt(c.volume);
-  
-    const isLive = Date.now() - c.openTime < 60_000;
-
-    // 🔥 damp early live candles
-    if (isLive) weight *= 0.5;
-
-    if (weight <= 0) continue;
-
-    open += c.open * weight;
-    close += c.close * weight;
-
-    high = high === null ? c.high : Math.max(high, c.high);
-    low = low === null ? c.low : Math.min(low, c.low);
+    const weight = trust * Math.sqrt(c.volume);
+ 
+    high = Math.max(high, c.high);
+    low = Math.min(low, c.low);
 
     volume += c.volume;
+    weightedCloseSum += c.close * weight;
     weightSum += weight;
   }
 
-  if (!weightSum || high === null || low === null) return null;
-
   return {
-    open: open / weightSum,
-    close: close / weightSum,
+    open,
     high,
     low,
+    close,
     volume,
+    weightedClose: weightSum ? weightedCloseSum / weightSum : close, // VWAP style
   };
 }
+
+
+
+
+
+
+
+
+
+
+
+//2nd one 
+
+// import { EXCHANGE_WEIGHTS } from "../constants/exchanges.constants";
+// import { ExchangeCandle } from "../types/candle.type";
+
+// export function aggregateCandles(candles: ExchangeCandle[]) {
+//   if (!candles.length) return null;
+
+//   const valid = candles.filter(c =>
+//     Number.isFinite(c.open) &&
+//     Number.isFinite(c.close) &&
+//     Number.isFinite(c.high) &&
+//     Number.isFinite(c.low) &&
+//     Number.isFinite(c.volume) &&
+//     c.volume > 0,
+//   );
+
+//   if (!valid.length) return null;
+
+//   let weightSum = 0;
+//   let open = 0;
+//   let close = 0;
+//   let high = -Infinity;
+//   let low = Infinity;
+//   let volume = 0;
+
+//   for (const c of valid) {
+//     const trust = EXCHANGE_WEIGHTS[c.exchange] ?? 0.3;
+
+//     const weight = trust * Math.sqrt(c.volume);
+
+//     open += c.open * weight;
+//     close += c.close * weight;
+
+//     high = Math.max(high, c.high);
+//     low = Math.min(low, c.low);
+
+//     volume += c.volume;
+//     weightSum += weight;
+//   }
+
+//   if (!weightSum) return null;
+
+//   return {
+//     open: open / weightSum,
+//     close: close / weightSum,
+//     high,
+//     low,
+//     volume,
+//   };
+// }
+
+
+
+
+
+
+
+// import { EXCHANGE_WEIGHTS } from '../constants/exchanges.constants';
+// import { ExchangeCandle } from '../types/candle.type';
+
+// export function aggregateCandles(
+//   candles: ExchangeCandle[],
+// ) {
+//   if (!candles.length) return null;
+
+//   let weightSum = 0;
+//   let open = 0;
+//   let close = 0;
+//   let high: number | null = null;
+//   let low: number | null = null;
+//   let volume = 0;
+
+
+//   for (const c of candles) {
+//     if (
+//       !Number.isFinite(c.open) ||
+//       !Number.isFinite(c.close) ||
+//       !Number.isFinite(c.high) ||
+//       !Number.isFinite(c.low) ||
+//       !Number.isFinite(c.volume) ||
+//       c.volume <= 0
+//     ) {
+//       continue;
+//     }
+
+//     const trust = EXCHANGE_WEIGHTS[c.exchange] ?? 0.3;
+
+//     // sqrt volume reduces manipulation
+//     let weight = trust * Math.sqrt(c.volume);
+  
+//     const isLive = Date.now() - c.openTime < 60_000;
+
+//     // 🔥 damp early live candles
+//     if (isLive) weight *= 0.5;
+
+//     if (weight <= 0) continue;
+
+//     open += c.open * weight;
+//     close += c.close * weight;
+
+//     high = high === null ? c.high : Math.max(high, c.high);
+//     low = low === null ? c.low : Math.min(low, c.low);
+
+//     volume += c.volume;
+//     weightSum += weight;
+//   }
+
+//   if (!weightSum || high === null || low === null) return null;
+
+//   return {
+//     open: open / weightSum,
+//     close: close / weightSum,
+//     high,
+//     low,
+//     volume,
+//   };
+// }
 
 
 // export function aggregateCandles(

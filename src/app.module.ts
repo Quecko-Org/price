@@ -7,6 +7,9 @@ import { SymbolsModule } from './ingestion/symbols/symbols.module';
 import { SyncModule } from './ingestion/sync/sync.module';
 import { ExchangesModule } from './ingestion/exchanges/exchanges.module';
 import { MarketDataModule } from './market-data/market-data.module';
+import { OnchainModule } from './ingestion/onchain/onchain.module';
+import { AuthModule } from './auth/auth.module';
+import { ApiModule } from './api/api.module';
 
 @Module({
   imports: [
@@ -24,7 +27,11 @@ import { MarketDataModule } from './market-data/market-data.module';
     ExchangesModule,
     SymbolsModule,
     SyncModule,
-    MarketDataModule
+    MarketDataModule,
+    OnchainModule,
+    AuthModule,
+    ApiModule,
+    
   ],
   controllers: [AppController],
   providers: [AppService],
