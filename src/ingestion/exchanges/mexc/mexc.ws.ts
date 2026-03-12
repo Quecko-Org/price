@@ -1,159 +1,279 @@
-import WebSocket from 'ws';
-import { Injectable, Logger } from '@nestjs/common';
-import { Exchange } from '@/common/enums/exchanges.enums';
-import { AggregationService } from '@/aggregation/aggregation.service';
-
-// Install: npm install @frank1957/exchange-pb
-// This package provides the protobuf definitions for MEXC
-import { mexc } from '@frank1957/exchange-pb';
-
-interface Candle {
-  openTime: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  isFinal: boolean;
-}
+import WebSocket from "ws";
+import { Injectable, Logger } from "@nestjs/common";
+import { Exchange } from "@/common/enums/exchanges.enums";
+import { AggregationService } from "@/aggregation/aggregation.service";
+import { mexc } from "@frank1957/exchange-pb";
 
 @Injectable()
 export class MexcWebSocket {
+
   private readonly logger = new Logger(MexcWebSocket.name);
-  private ws?: WebSocket;
-  private pingInterval?: NodeJS.Timeout;
-  private symbolMarketMap: Record<string, number> = {};
-  private symbolMetaMap:  Record<string, { base: string; quote: string }> = {};
 
-  private symbols: string[] = [];
-  private lastCandle: Record<string, Candle> = {};
-  private toNumber(value?: string | null): number {
-    return value ? Number(value) : 0;
-  }
+  private sockets: WebSocket[] = [];
+
   constructor(
-    // @Inject(forwardRef(() => AggregationService))
-    private readonly aggregationService: AggregationService,
+    private readonly aggregationService: AggregationService
   ) {}
-  private safeSend(payload: any) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(payload));
-    }
+
+  private toNumber(v?: string | null) {
+    return v ? Number(v) : 0;
   }
-  connect(symbols: string[], symbolMarketMap: Record<string, number>,
+
+  connect(
+    symbols: string[],
+    symbolMarketMap: Record<string, number>,
     symbolMetaMap: Record<string, { base: string; quote: string }>
-    ) {
-      console.log("mexc",symbols)
+  ) {
 
-    this.symbols = symbols;
-    this.symbolMarketMap = symbolMarketMap;
-    this.symbolMetaMap = symbolMetaMap;
+    const ws = new WebSocket("wss://wbs-api.mexc.com/ws");
 
-    this.ws = new WebSocket('wss://wbs-api.mexc.com/ws');
-  
-    this.ws.on('open', () => {
-      this.logger.log('Connected to MEXC Spot WebSocket');
-  
+    this.sockets.push(ws);
+
+    ws.on("open", () => {
+
+      this.logger.log(`MEXC WS connected (${symbols.length})`);
+
       const params = symbols.map(
         s => `spot@public.kline.v3.api.pb@${s}@Min1`
       );
-  
-      this.safeSend({
-        method: 'SUBSCRIPTION',
+
+      ws.send(JSON.stringify({
+        method: "SUBSCRIPTION",
         params,
-      });
-  
-      /** keep connection alive */
-      this.pingInterval = setInterval(() => {
-        if (this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify({ method: 'PING' }));
+      }));
+
+      setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ method: "PING" }));
         }
-      }, 20_000);
+      }, 20000);
     });
-  
-    this.ws.on('message', (data: Buffer) => {
+
+    ws.on("message", (data: Buffer) => {
+
       try {
-  
-        /** JSON responses (PONG, confirmations) */
-        if (data[0] === 0x7b) {
-  
-          const json = JSON.parse(data.toString());
-  
-          if (json?.msg === 'PONG') return;
-  
-          if (json?.msg?.includes('spot@public.kline')) {
-            this.logger.log(`Subscribed: ${json.msg}`);
-          }
-  
-          return;
-        }
-  
-        /** protobuf message */
+
+        if (data[0] === 0x7b) return;
+
         const wrapper = mexc.PushDataV3ApiWrapper.decode(data);
-  
+
         const kline = wrapper.publicSpotKline;
         if (!kline) return;
-  
+
         const symbol = wrapper.symbol;
-  
+
         const key = `${Exchange.MEXC}:${symbol}`;
-        const marketId = this.symbolMarketMap[key];
-  
+
+        const marketId = symbolMarketMap[key];
         if (!marketId) return;
-        const meta = this.symbolMetaMap[key];
+
+        const meta = symbolMetaMap[key];
         if (!meta) return;
+
         const openTime = Number(kline.windowStart) * 1000;
-  
+
         this.aggregationService.handleLiveCandle(
           marketId,
           Exchange.MEXC,
           {
             exchange: Exchange.MEXC,
             openTime,
-            quote: meta.quote,  
+            quote: meta.quote,
             open: this.toNumber(kline.openingPrice),
             high: this.toNumber(kline.highestPrice),
             low: this.toNumber(kline.lowestPrice),
             close: this.toNumber(kline.closingPrice),
             volume: this.toNumber(kline.volume),
             isFinal: false,
-          },
+          }
         );
-  
+
       } catch (err) {
-        this.logger.error('MEXC message parse error', err);
+        this.logger.error("MEXC decode error", err);
       }
     });
-  
-    this.ws.on('close', () => {
-      this.logger.warn('MEXC WS closed. Reconnecting in 3s');
-  
-      clearInterval(this.pingInterval);
-  
+
+    ws.on("close", () => {
+      this.logger.warn(`MEXC WS closed (${symbols.length})`);
       setTimeout(() => {
-        this.connect(this.symbols, this.symbolMarketMap,this.symbolMetaMap);
+        this.connect(symbols, symbolMarketMap, symbolMetaMap);
       }, 3000);
     });
-  
-    this.ws.on('error', err => {
-      this.logger.error('MEXC WS error', err);
-      this.ws?.close();
+
+    ws.on("error", err => {
+      this.logger.error("MEXC WS error", err);
+      ws.close();
     });
   }
-  disconnect() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-    }
-    if (this.ws) {
-      this.ws.close();
-    }
-  }
+}
+
+
+
+
+// import WebSocket from 'ws';
+// import { Injectable, Logger } from '@nestjs/common';
+// import { Exchange } from '@/common/enums/exchanges.enums';
+// import { AggregationService } from '@/aggregation/aggregation.service';
+
+// // Install: npm install @frank1957/exchange-pb
+// // This package provides the protobuf definitions for MEXC
+// import { mexc } from '@frank1957/exchange-pb';
+
+// interface Candle {
+//   openTime: number;
+//   open: number;
+//   high: number;
+//   low: number;
+//   close: number;
+//   volume: number;
+//   isFinal: boolean;
+// }
+
+// @Injectable()
+// export class MexcWebSocket {
+//   private readonly logger = new Logger(MexcWebSocket.name);
+//   private ws?: WebSocket;
+//   private pingInterval?: NodeJS.Timeout;
+//   private symbolMarketMap: Record<string, number> = {};
+//   private symbolMetaMap:  Record<string, { base: string; quote: string }> = {};
+
+//   private symbols: string[] = [];
+//   private lastCandle: Record<string, Candle> = {};
+//   private toNumber(value?: string | null): number {
+//     return value ? Number(value) : 0;
+//   }
+//   constructor(
+//     // @Inject(forwardRef(() => AggregationService))
+//     private readonly aggregationService: AggregationService,
+//   ) {}
+//   private safeSend(payload: any) {
+//     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+//       this.ws.send(JSON.stringify(payload));
+//     }
+//   }
+//   connect(symbols: string[], symbolMarketMap: Record<string, number>,
+//     symbolMetaMap: Record<string, { base: string; quote: string }>
+//     ) {
+//       console.log("mexc",symbols)
+
+//     this.symbols = symbols;
+//     this.symbolMarketMap = symbolMarketMap;
+//     this.symbolMetaMap = symbolMetaMap;
+
+//     this.ws = new WebSocket('wss://wbs-api.mexc.com/ws');
+  
+//     this.ws.on('open', () => {
+//       this.logger.log('Connected to MEXC Spot WebSocket');
+  
+//       const params = symbols.map(
+//         s => `spot@public.kline.v3.api.pb@${s}@Min1`
+//       );
+  
+//       this.safeSend({
+//         method: 'SUBSCRIPTION',
+//         params,
+//       });
+  
+//       /** keep connection alive */
+//       this.pingInterval = setInterval(() => {
+//         if (this.ws?.readyState === WebSocket.OPEN) {
+//           this.ws.send(JSON.stringify({ method: 'PING' }));
+//         }
+//       }, 20_000);
+//     });
+  
+//     this.ws.on('message', (data: Buffer) => {
+//       try {
+  
+//         /** JSON responses (PONG, confirmations) */
+//         if (data[0] === 0x7b) {
+  
+//           const json = JSON.parse(data.toString());
+  
+//           if (json?.msg === 'PONG') return;
+  
+//           if (json?.msg?.includes('spot@public.kline')) {
+//             this.logger.log(`Subscribed: ${json.msg}`);
+//           }
+  
+//           return;
+//         }
+  
+//         /** protobuf message */
+//         const wrapper = mexc.PushDataV3ApiWrapper.decode(data);
+  
+//         const kline = wrapper.publicSpotKline;
+//         if (!kline) return;
+  
+//         const symbol = wrapper.symbol;
+  
+//         const key = `${Exchange.MEXC}:${symbol}`;
+//         const marketId = this.symbolMarketMap[key];
+  
+//         if (!marketId) return;
+//         const meta = this.symbolMetaMap[key];
+//         if (!meta) return;
+//         const openTime = Number(kline.windowStart) * 1000;
+  
+//         this.aggregationService.handleLiveCandle(
+//           marketId,
+//           Exchange.MEXC,
+//           {
+//             exchange: Exchange.MEXC,
+//             openTime,
+//             quote: meta.quote,  
+//             open: this.toNumber(kline.openingPrice),
+//             high: this.toNumber(kline.highestPrice),
+//             low: this.toNumber(kline.lowestPrice),
+//             close: this.toNumber(kline.closingPrice),
+//             volume: this.toNumber(kline.volume),
+//             isFinal: false,
+//           },
+//         );
+  
+//       } catch (err) {
+//         this.logger.error('MEXC message parse error', err);
+//       }
+//     });
+  
+//     this.ws.on('close', () => {
+//       this.logger.warn('MEXC WS closed. Reconnecting in 3s');
+  
+//       clearInterval(this.pingInterval);
+  
+//       setTimeout(() => {
+//         this.connect(this.symbols, this.symbolMarketMap,this.symbolMetaMap);
+//       }, 3000);
+//     });
+  
+//     this.ws.on('error', err => {
+//       this.logger.error('MEXC WS error', err);
+//       this.ws?.close();
+//     });
+//   }
+//   disconnect() {
+//     if (this.pingInterval) {
+//       clearInterval(this.pingInterval);
+//     }
+//     if (this.ws) {
+//       this.ws.close();
+//     }
+//   }
 
 
 
 
 
   
-}
+// }
+
+
+
+
+
+
+
+
 
 
 

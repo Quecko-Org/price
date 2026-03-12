@@ -459,7 +459,7 @@ export class SymbolsService {
   async refreshRates() {
     try {
       const res = await axios.get('https://api.frankfurter.app/latest?from=USD');
-      console.log("ress",res)
+      // console.log("ress",res)
       for (const [currency, rate] of Object.entries(res.data.rates)) {
         // console.log("currency, rate",currency, rate)
         this.rates.set(currency, Number(rate));

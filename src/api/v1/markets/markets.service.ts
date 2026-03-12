@@ -47,19 +47,22 @@ export class MarketsService {
 
 
 
-  async get24hStats(marketId: number) {
+  async get24hStats(marketId: number,  from?: number,
+    to?: number) {
     const rows = await this.repo.get24hStats(
-      marketId
+      marketId,
+      from,
+      to,
     );
 
    
     const r = rows[0];
-
+console.log("roww",rows)
     return {
       high: +r.high,
       low: +r.low,
       volume: +r.volume,
-      change24h: ((r.close - r.open) / r.open) * 100,
+      // change24h: ((r.close - r.open) / r.open) * 100,
     };
   }
 
