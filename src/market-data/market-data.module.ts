@@ -27,3 +27,5 @@ import { MarketEntity } from './market.entity';
 
 })
 export class MarketDataModule {}
+
+

@@ -44,6 +44,31 @@ components:
           type: number
         volume:
           type: number
+    MarketPrice:
+      type: object
+      properties:
+        symbol:
+          type: string
+        price:
+          type: number
+    MarketStats:
+      type: object
+      properties:
+        symbol:
+          type: string
+        price:
+          type: object
+          properties:
+            open:
+              type: number
+            close:
+              type: number
+            high:
+              type: number
+            low:
+              type: number
+            volume:
+              type: number
     Payment:
       type: object
       properties:
@@ -236,75 +261,36 @@ paths:
                     type: string
                     example: Password reset successful
 
-  /api/v1/markets/{symbol}:
+  /api/v1/markets:
     get:
       tags: [Markets]
-      summary: Get market info for a symbol
+      summary: Get candles for a symbol
+      description: Returns candle (OHLCV) data for a given symbol and interval
       parameters:
         - name: symbol
-          in: path
+          in: query
           required: true
           schema:
             type: string
             example: BTC
-        - name: cache-bust
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        200:
-          description: Market info retrieved
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  symbol:
-                    type: string
-                    example: BTC
-                  base:
-                    type: string
-                    example: BTC
-                  quote:
-                    type: string
-                    example: USD
-                  marketId:
-                    type: integer
-                    example: 6262
-                  price:
-                    type: number
-                    example: 27354.12
-
-  /api/v1/markets/{interval}/{marketId}:
-    get:
-      tags: [Markets]
-      summary: Get Market data for marketId
-      parameters:
         - name: interval
-          in: path
+          in: query
           required: true
           schema:
             type: string
             enum: [1m, 5m, 15m, 1h, 4h, 1d, 1w]
             example: 1m
-        - name: marketId
-          in: path
-          required: true
-          schema:
-            type: integer
-            example: 6262
         - name: from
           in: query
           required: false
-          description: Unix timestamp (seconds)
+          description: Unix timestamp (seconds) for start
           schema:
             type: integer
             example: 1773241043
         - name: to
           in: query
           required: false
-          description: Unix timestamp (seconds)
+          description: Unix timestamp (seconds) for end
           schema:
             type: integer
             example: 1773327443
@@ -316,14 +302,72 @@ paths:
             example: 100
       responses:
         200:
-          description: Market data retrieved
+          description: Candle data retrieved
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Market'
+                type: object
+                properties:
+                  s:
+                    type: string
+                    example: ok
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Market'
 
+  /api/v1/markets/{symbol}/price:
+    get:
+      tags: [Markets]
+      summary: Get latest price for a symbol
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: BTC
+      responses:
+        200:
+          description: Latest price retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketPrice'
+
+  /api/v1/markets/{symbol}/stats:
+    get:
+      tags: [Markets]
+      summary: Get 24h stats for a symbol
+      description: Returns 24h open, close, high, low, and volume
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+            example: BTC
+        - name: from
+          in: query
+          required: false
+          description: Unix timestamp (seconds) for start
+          schema:
+            type: integer
+            example: 1773241043
+        - name: to
+          in: query
+          required: false
+          description: Unix timestamp (seconds) for end
+          schema:
+            type: integer
+            example: 1773327443
+      responses:
+        200:
+          description: 24h stats retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketStats'
   /payments/verify:
     post:
       tags: [Payments]

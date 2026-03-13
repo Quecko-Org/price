@@ -18,7 +18,6 @@ export class MarketsController {
   async getCandles(@Query() query: MarketsQueryDto) {
 
     const market = await this.marketDataService.findBySymbol(query.symbol);
-console.log("market",market)
     if (!market) {
       return { s: 'error', message: 'symbol not found' };
     }
@@ -55,13 +54,13 @@ console.log("market",market)
 
 
   @Get(':symbol/stats')
-  async get24hStats(@Param('symbol') symbol: string,@Query() query: MarketsQueryDto) {
+  async get24hStats(@Param('symbol') symbol: string, @Query() query: MarketsQueryDto) {
 
     const market = await this.marketDataService.findBySymbol(symbol);
     if (!market) {
       return { s: 'error', message: 'symbol not found' };
     }
-    const price = await this.marketsService.get24hStats(market.id,query.from,
+    const price = await this.marketsService.get24hStats(market.id, query.from,
       query.to);
 
     return {
@@ -69,9 +68,6 @@ console.log("market",market)
       price,
     };
   }
-
-
-
 
 
 

@@ -11,6 +11,7 @@ import { OnchainModule } from './ingestion/onchain/onchain.module';
 import { AuthModule } from './auth/auth.module';
 import { ApiModule } from './api/api.module';
 import { UserModule } from './user/user.module';
+import { ApiUsageModule } from './api-usage/api-usage.module';
 
 @Module({
   imports: [
@@ -32,7 +33,8 @@ import { UserModule } from './user/user.module';
     OnchainModule,
     AuthModule,
     ApiModule,
-    UserModule
+    UserModule,
+    ApiUsageModule
     
   ],
   controllers: [AppController],

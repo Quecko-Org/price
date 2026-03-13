@@ -1,41 +1,40 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
+import sgMailPkg from '@sendgrid/mail';
 
+const sgMail = sgMailPkg;
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
-  private transporter: nodemailer.Transporter;
 
   constructor() {
-    // Configure SMTP transporter
-    this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST, // e.g., smtp.gmail.com
-      port:  587,
-      secure: false, // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY||"");
+
   }
 
   async sendMail(options: {
     to: string;
-    subject: string;
-    html: string;
+    templateId:string;
+    dynamicTemplateData?: Record<string, any>;
   }) {
     try {
-      const info = await this.transporter.sendMail({
-        from: `"Your App Name" <${process.env.SMTP_USER}>`,
+      const msg: any = {
+        from: {
+          email: process.env.SENDGRID_FROM_EMAIL,
+          name: process.env.SENDGRID_FROM_NAME || 'Your App',
+        },
         to: options.to,
-        subject: options.subject,
-        html: options.html,
-      });
-      this.logger.log(`Email sent: ${info.messageId}`);
+      };
+
+        msg.templateId = process.env.SENDGRID_PAYMENT_CONFIRMATION;
+        msg.dynamicTemplateData = options.dynamicTemplateData;
+      
+
+      const info = await sgMail.send(msg);
+      this.logger.log(`Email sent to ${options.to}`);
       return info;
     } catch (err) {
-      this.logger.error('Failed to send email', err);
+      console.log("asssssssssssssss",err,err.response.body.errors)
+      this.logger.error(`Failed to send email to ${options.to}`, err,err.response.body);
       throw err;
     }
-  }
-}
+  }}

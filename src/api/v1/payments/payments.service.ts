@@ -40,10 +40,17 @@ console.log("ggg")
   
     await this.userRepo.save(user);
     await this.mailService.sendMail({
-        to: user.email,
-        subject: 'Payment Confirmation',
-        html: ` <p>Thank you for your purchase.</p>`,
-      });
+      to: user.email,
+      templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
+      dynamicTemplateData: {
+        name: user.name,
+        plan: user.plan,
+        amount: payment.amountUsdt,
+        walletAddress:payment.fromWallet,
+        transactionId: payment.transactionId,
+        date: new Date().toLocaleDateString(),
+      },
+    });
     return entity;
   }
  
@@ -72,10 +79,19 @@ console.log("ggg")
     user.plan = dto.plan;
   
     await this.userRepo.save(user);
-    await this.mailService.sendMail({
+
+
+      await this.mailService.sendMail({
         to: user.email,
-        subject: 'successfully upgraded ',
-        html: ` <p>Thank you for your purchase.</p>`,
+        templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
+        dynamicTemplateData: {
+          name: user.name,
+          plan: user.plan,
+          amount: payment.amountUsdt,
+          walletAddress:payment.fromWallet,
+          transactionId: payment.transactionId,
+          date: new Date().toLocaleDateString(),
+        },
       });
     return entity;
   }

@@ -24,6 +24,7 @@ export class ApiKeysService {
 
   async create(user: UserEntity, dto: CreateApiKeyDto) {
 
+
     const key = this.generateKey();
     // const hash = crypto
     // .createHash('sha256')
