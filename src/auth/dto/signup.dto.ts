@@ -1,12 +1,9 @@
 
 
+import { UserPlan } from '@/common/enums/payment.enum';
 import { IsEmail, IsNotEmpty, IsString, IsBoolean, IsEnum } from 'class-validator';
 
-export enum Plan {
-  BASIC = 'basic',
-  GROWTH = 'growth',
-  PRO = 'pro',
-}
+
 
 export class SignUpDto {
   @IsEmail({}, { message: 'Email must be valid' })
@@ -20,8 +17,8 @@ export class SignUpDto {
   @IsNotEmpty({ message: 'Password is required' })
   password: string;
 
-  @IsEnum(Plan, { message: 'Plan must be basic, growth or pro' })
-  plan?: Plan;
+  @IsEnum(UserPlan, { message: 'Plan must be basic, growth or pro' })
+  plan?: UserPlan;
 
   @IsBoolean()
   newsletter?: boolean;

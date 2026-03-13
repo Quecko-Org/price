@@ -1,10 +1,6 @@
+import { UserPlan } from '@/common/enums/payment.enum';
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
-export enum Plan {
-  BASIC = 'basic',
-  GROWTH = 'growth',
-  PRO = 'pro',
-}
 @Entity('users')
 export class UserEntity {
   @PrimaryGeneratedColumn()
@@ -16,11 +12,14 @@ export class UserEntity {
   @Column()
   name: string;
 
+  @Column({type: 'varchar', nullable: true })
+  companyName?:  string | null;
+
   @Column()
   password: string; // hashed password
 
-  @Column({ type: 'enum', enum: Plan, default: Plan.BASIC })
-  plan: Plan;
+  @Column({ type: 'enum', enum: UserPlan, default: UserPlan.BASIC })
+  plan: UserPlan;
 
   @Column({ default: false })
   newsletter: boolean; // receive updates from Pro API

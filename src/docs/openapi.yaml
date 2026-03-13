@@ -1,4 +1,4 @@
-openapi: 3.0.3
+openapi: 3.0.3  
 info:
   title: Price API
   description: API for Price Aggregator Project
@@ -44,7 +44,44 @@ components:
           type: number
         volume:
           type: number
-
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        amountUsdt:
+          type: number
+        amountCurrency:
+          type: number
+        currency:
+          type: string
+        transactionId:
+          type: string
+        status:
+          type: string
+          enum: [pending, confirmed, failed]
+        createdAt:
+          type: string
+          format: date-time
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        key:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
 security:
   - BearerAuth: []
 
@@ -55,6 +92,13 @@ tags:
     description: Market info and coin prices
   - name: Markets
     description: Market data for different intervals
+  - name: Payments
+    description: Payment, subscription, and plan management
+  - name: API Keys
+    description: API key management for users
+  - name: Users
+    description: User profile and account management
+
 
 paths:
   /auth/signup:
@@ -279,3 +323,238 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Market'
+
+  /payments/verify:
+    post:
+      tags: [Payments]
+      summary: Confirm user payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transactionId, amountCurrency, currency, plan,walletAddress,amountUsdt]
+              properties:
+                transactionId:
+                  type: string
+                  example: 0x123abc...
+                amountCurrency:
+                  type: number
+                  example: 100 
+                amountUsdt:
+                  type: number
+                  example: 100
+                currency:
+                  type: string
+                  example: USDT
+                plan:
+                  type: string
+                  enum: [basic, growth, pro]
+                walletAddress:
+                  type: string
+
+      responses:
+        200:
+          description: Payment confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Payment confirmed and plan updated
+                  payment:
+                    $ref: '#/components/schemas/Payment'
+  /payments/upgrade:
+    post:
+      tags: [Payments]
+      summary: upgrade user plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transactionId, amountCurrency, currency, plan,walletAddress,amountUsdt]
+              properties:
+                transactionId:
+                  type: string
+                  example: 0x123abc...
+                amountCurrency:
+                  type: number
+                  example: 100 
+                amountUsdt:
+                  type: number
+                  example: 100
+                currency:
+                  type: string
+                  example: USDT
+                plan:
+                  type: string
+                  enum: [basic, growth, pro]
+                walletAddress:
+                  type: string
+
+      responses:
+        200:
+          description: Payment confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Payment confirmed and plan updated
+                  payment:
+                    $ref: '#/components/schemas/Payment'
+
+  /payments/history:
+    get:
+      tags: [Payments]
+      summary: Get user billing history
+      responses:
+        200:
+          description: Billing history retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payment'
+  
+  /payments/current:
+    get:
+      tags: [Payments]
+      summary: Get user current plan
+      responses:
+        200:
+          description: Billing history retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payment'
+  
+
+  /apikeys:
+    post:
+      tags: [API Keys]
+      summary: Generate new API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: MyKey1
+      responses:
+        201:
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+    get:
+      tags: [API Keys]
+      summary: Get all API keys for current user
+      responses:
+        200:
+          description: API keys retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApiKey'
+
+  /apikeys/{id}:
+    delete:
+      tags: [API Keys]
+      summary: Delete an API key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: API key deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: API key deleted successfully
+
+  # ----------------- User Profile APIs -----------------
+  /users/{id}:
+    patch:
+      tags: [Users]
+      summary: Update user profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: John Doe
+                email:
+                  type: string
+                  example: john@example.com
+                companyName:
+                  type: string
+                  example: ACME Corp
+                oldPassword:
+                  type: string
+                  example: oldPassword123
+                newPassword:
+                  type: string
+                  example: NewPassword123
+      responses:
+        200:
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    delete:
+      tags: [Users]
+      summary: Delete user account
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: User deleted successfully

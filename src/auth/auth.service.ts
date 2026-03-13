@@ -4,12 +4,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
-import { Plan, SignUpDto } from './dto/signup.dto';
+import {  SignUpDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { UserEntity } from '@/user/entities/user.entity';
 import { randomBytes } from 'crypto';
 import { addMinutes } from 'date-fns';
 import { MailService } from '@/common/mail/mail.service';
+import { UserPlan } from '@/common/enums/payment.enum';
 
 @Injectable()
 export class AuthService {
@@ -30,7 +31,7 @@ export class AuthService {
       email: dto.email,
       name: dto.name,
       password: hashedPassword,
-      plan: dto.plan ?? Plan.BASIC, // default if not provided
+      plan: dto.plan ?? UserPlan.BASIC, // default if not provided
       newsletter: dto.newsletter ?? false,
       agreeToTerms: dto.agreeToTerms,
     

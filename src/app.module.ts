@@ -10,6 +10,7 @@ import { MarketDataModule } from './market-data/market-data.module';
 import { OnchainModule } from './ingestion/onchain/onchain.module';
 import { AuthModule } from './auth/auth.module';
 import { ApiModule } from './api/api.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ApiModule } from './api/api.module';
     OnchainModule,
     AuthModule,
     ApiModule,
+    UserModule
     
   ],
   controllers: [AppController],
