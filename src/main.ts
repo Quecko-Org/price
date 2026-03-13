@@ -20,6 +20,11 @@ async function bootstrap() {
   );
 
   app.useGlobalFilters(new HttpExceptionFilter());
+  app.enableCors({
+    origin: '*', // allow all origins (for development)
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+  });
 
   // Load YAML
   const swaggerDocument = YAML.load('src/docs/openapi.yaml');
