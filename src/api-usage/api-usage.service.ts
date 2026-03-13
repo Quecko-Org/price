@@ -44,13 +44,13 @@ export class ApiUsageService {
 
         const data = await this.usageRepo.query(`
           SELECT
-            DATE(created_at) as date,
+            DATE("createdAt") as date,
             COUNT(*) as requests
           FROM api_usage
-          WHERE user_id = $1
-          AND created_at >= now() - interval '30 days'
-          GROUP BY DATE(created_at)
-          ORDER BY DATE(created_at)
+          WHERE "userId" = $1
+          AND "createdAt" >= now() - interval '30 days'
+          GROUP BY DATE("createdAt")
+          ORDER BY DATE("createdAt")
         `,[userId]);
       
         return data;

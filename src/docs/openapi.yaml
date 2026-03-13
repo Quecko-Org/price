@@ -107,6 +107,28 @@ components:
         lastUsedAt:
           type: string
           format: date-time
+    ApiUsageOverview:
+      type: object
+      properties:
+        totalRequests:
+          type: integer
+          example: 100
+        successRate:
+          type: number
+          example: 92.5
+        avgResponseTime:
+          type: number
+          example: 150
+    ApiUsageDaily:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          example: 2026-03-01
+        requests:
+          type: integer
+          example: 10
 security:
   - BearerAuth: []
 
@@ -590,3 +612,50 @@ paths:
                   message:
                     type: string
                     example: User deleted successfully
+
+
+
+
+
+   # API Usage endpoints
+  /api/v1/usage/overview:
+    get:
+      tags: [Usage]
+      summary: Get API usage overview for authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: API usage overview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/ApiUsageOverview'
+
+  /api/v1/usage/daily:
+    get:
+      tags: [Usage]
+      summary: Get daily API usage counts (last 30 days) for authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Daily API usage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiUsageDaily'
