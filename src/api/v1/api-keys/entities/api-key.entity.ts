@@ -14,9 +14,9 @@ export class ApiKeyEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @ManyToOne(() => UserEntity)
+  @ManyToOne(() => UserEntity, user => user.apiKeys, { onDelete: 'CASCADE' })
   user: UserEntity;
-
+  
   @Column()
   name: string;
 

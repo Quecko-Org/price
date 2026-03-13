@@ -4,6 +4,7 @@ import {
     Column,
     ManyToOne,
     CreateDateColumn,
+    OneToMany,
   } from 'typeorm';
   
   import { UserEntity } from '@/user/entities/user.entity';
@@ -26,6 +27,9 @@ import { UserPlan,PaymentStatus } from '@/common/enums/payment.enum';
 
     @Column('decimal', { precision: 18, scale: 8 })
     amountCurrency: number;
+
+    @OneToMany(() => PaymentEntity, payment => payment.user)
+  payments: PaymentEntity[];
   
     @Column()
     currency: string;

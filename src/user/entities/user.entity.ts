@@ -1,5 +1,7 @@
+import { ApiKeyEntity } from '@/api/v1/api-keys/entities/api-key.entity';
+import { PaymentEntity } from '@/api/v1/payments/entities/payment.entity';
 import { UserPlan } from '@/common/enums/payment.enum';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 
 @Entity('users')
 export class UserEntity {
@@ -30,6 +32,13 @@ export class UserEntity {
   @UpdateDateColumn()
   updatedAt: Date;
 
+  @OneToMany(() => ApiKeyEntity, apiKey => apiKey.user)
+  apiKeys: ApiKeyEntity[];
+ 
+
+
+  @OneToMany(() => PaymentEntity, payment => payment.user)
+  payments: PaymentEntity[];
 
   @Column({ default: false })
   agreeToTerms: boolean;
