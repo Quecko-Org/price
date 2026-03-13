@@ -1,5 +1,5 @@
 import { UserPlan } from "@/common/enums/payment.enum";
-import { IsEnum, IsNotEmpty } from "class-validator";
+import { IsEnum, IsNotEmpty, IsNumber } from "class-validator";
 
 export class VerifyPaymentDto {
 
@@ -14,7 +14,9 @@ export class VerifyPaymentDto {
   @IsNotEmpty({ message: 'amount is required' })
   amountUsdt: number;
 
-  amountCurrency?: number;
+
+  @IsNotEmpty({ message: 'amount is required' })
+  amountCurrency: number;
 
   @IsNotEmpty({ message: 'transaction id is required' })
   transactionId: string;

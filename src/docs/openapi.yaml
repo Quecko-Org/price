@@ -377,7 +377,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [transactionId, amountCurrency, currency, plan,walletAddress,amountUsdt]
+              required: [transactionId, currency, plan,walletAddress,amountUsdt]
               properties:
                 transactionId:
                   type: string
@@ -440,7 +440,7 @@ paths:
                   $ref: '#/components/schemas/Payment'
   
 
-  /apikeys:
+  /api-keys:
     post:
       tags: [API Keys]
       summary: Generate new API key
@@ -475,7 +475,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/ApiKey'
 
-  /apikeys/{id}:
+  /api-keys/{id}:
     delete:
       tags: [API Keys]
       summary: Delete an API key
@@ -498,16 +498,10 @@ paths:
                     example: API key deleted successfully
 
   # ----------------- User Profile APIs -----------------
-  /users/{id}:
+  /users:
     patch:
       tags: [Users]
       summary: Update user profile
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
       requestBody:
         required: true
         content:
@@ -541,12 +535,6 @@ paths:
     delete:
       tags: [Users]
       summary: Delete user account
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
       responses:
         200:
           description: User deleted successfully

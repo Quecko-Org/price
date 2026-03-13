@@ -13,7 +13,7 @@ import { MailModule } from '@/common/mail/mail.module';
   imports: [TypeOrmModule.forFeature([PaymentEntity,UserEntity]),MailModule],
   controllers: [PaymentsController],
   providers: [PaymentsService],
-})
+}) 
 export class PaymentsModule implements NestModule {
 
   configure(consumer: MiddlewareConsumer) {

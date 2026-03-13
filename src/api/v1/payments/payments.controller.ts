@@ -42,7 +42,7 @@ export class PaymentsController {
     const payment = req.payment;
 
     return this.paymentService.verifyUpgradePayment(req.user, payment, dto);
-  }
+  } 
 
   @UseGuards(AuthGuard('jwt'))
   @Get('current')

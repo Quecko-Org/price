@@ -6,6 +6,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as fs from 'fs';
 import * as YAML from 'yamljs';
 import { ValidationPipe } from '@nestjs/common';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -17,6 +18,9 @@ async function bootstrap() {
       errorHttpStatusCode: 400,
     }),
   );
+
+  app.useGlobalFilters(new HttpExceptionFilter());
+
   // Load YAML
   const swaggerDocument = YAML.load('src/docs/openapi.yaml');
 
@@ -28,7 +32,7 @@ async function bootstrap() {
 
 
 }
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+// process.on('unhandledRejection', (reason, promise) => {
+//   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+// });
 bootstrap();
