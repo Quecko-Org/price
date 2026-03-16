@@ -491,6 +491,19 @@ paths:
                 items:
                   $ref: '#/components/schemas/Payment'
   
+  /payments/payment-plan:
+    get:
+      tags: [Payments]
+      summary: Get payemnt plan 
+      responses:
+        200:
+          description: plan retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Payment'
   /payments/current:
     get:
       tags: [Payments]
