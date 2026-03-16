@@ -48,4 +48,5 @@ export class UserEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   resetPasswordExpires: Date | null;
+  
 }

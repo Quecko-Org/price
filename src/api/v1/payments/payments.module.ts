@@ -7,10 +7,11 @@ import { PaymentsService } from './payments.service';
 import { BlockchainPaymentMiddleware } from '@/common/middleware/transaction.middleware';
 import { UserEntity } from '@/user/entities/user.entity';
 import { MailModule } from '@/common/mail/mail.module';
+import { PlanEntity } from './entities/payemnt-plan';
 
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PaymentEntity,UserEntity]),MailModule],
+  imports: [TypeOrmModule.forFeature([PaymentEntity,UserEntity,PlanEntity]),MailModule],
   controllers: [PaymentsController],
   providers: [PaymentsService],
 }) 

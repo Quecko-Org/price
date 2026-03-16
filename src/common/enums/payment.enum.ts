@@ -3,13 +3,13 @@ export enum PaymentStatus {
     FAILED = 'failed',
   }
   export enum UserPlan {
-    BASIC = 'basic',
-    GROWTH = 'growth',
-    PRO = 'pro',
+    BASIC = 'basic',  //99
+    GROWTH = 'growth', //299
+    PRO = 'pro',//999
   }
 
   export const PLAN_MAP = {
-    0: UserPlan.BASIC,
-    1: UserPlan.GROWTH,
-    2: UserPlan.PRO,
+    1: UserPlan.BASIC, 
+    2: UserPlan.GROWTH, // 
+    3: UserPlan.PRO, //
   }

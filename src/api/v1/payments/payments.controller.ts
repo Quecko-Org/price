@@ -33,6 +33,8 @@ export class PaymentsController {
   }
 
 
+  
+
   @UseGuards(AuthGuard('jwt'))
   @Post('upgrade')
   upgradePlan(
@@ -44,13 +46,27 @@ export class PaymentsController {
     return this.paymentService.verifyUpgradePayment(req.user, payment, dto);
   } 
 
+
+
+  // @Post('payment-plan')
+  // create(@Body() dto: CreatePlanDto) {
+  //   return this.paymentService.create(dto);
+  // }
+
+  @Get('payment-plan')
+  findAll() {
+    return this.paymentService.findAll();
+  }
+
+
+  
   @UseGuards(AuthGuard('jwt'))
   @Get('current')
   current(@Req() req) {
     return this.paymentService.getCurrentPlan(req.user.id);
   }
 
-
+  
   @UseGuards(AuthGuard('jwt'))
   @Get('history')
   history(@Req() req) {

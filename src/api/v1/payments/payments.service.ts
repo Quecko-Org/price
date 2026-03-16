@@ -7,6 +7,7 @@ import { PaymentEntity } from './entities/payment.entity';
 import { UserEntity } from '@/user/entities/user.entity';
 import { PaymentStatus } from '@/common/enums/payment.enum';
 import { MailService } from '@/common/mail/mail.service';
+import { PlanEntity } from './entities/payemnt-plan';
 
 
 @Injectable()
@@ -16,6 +17,9 @@ export class PaymentsService {
     @InjectRepository(PaymentEntity)
     private paymentRepo: Repository<PaymentEntity>,
 
+    @InjectRepository(PlanEntity)
+    private planRepo: Repository<PlanEntity>,
+
     @InjectRepository(UserEntity)
     private userRepo: Repository<UserEntity>,
 
@@ -23,53 +27,66 @@ export class PaymentsService {
 
   ) {}
   async storePayment(user, payment,dto) {
-console.log("ggg",payment)
+
+console.log("ggg",user,payment)
     const entity = this.paymentRepo.create({
       user,
     transactionId: payment.transactionId,
+    plan:payment.plan,
       currency: payment.currency,
       amountCurrency: payment.amountCrypto,
-      amountUsdt: payment.amountUsdt,
       walletAddress: payment.fromWallet,
       status: PaymentStatus.CONFIRMED,
     });
   
-    await this.paymentRepo.save(entity);
+    // await this.paymentRepo.save(entity);
   
     user.plan = dto.plan;
   
     await this.userRepo.save(user);
-    await this.mailService.sendMail({
-      to: user.email,
-      templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
-      dynamicTemplateData: {
-        name: user.name,
-        plan: user.plan,
-        amount: payment.amountUsdt,
-        walletAddress:payment.fromWallet,
-        transactionId: payment.transactionId,
-        date: new Date().toLocaleDateString(),
-      },
-    });
+    // await this.mailService.sendMail({
+    //   to: user.email,
+    //   templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
+    //   dynamicTemplateData: {
+    //     name: user.name,
+    //     plan: user.plan,
+    //     amount: payment.amountUsdt,
+    //     walletAddress:payment.fromWallet,
+    //     transactionId: payment.transactionId,
+    //     date: new Date().toLocaleDateString(),
+    //   },
+    // });
     return entity;
   }
  
 
 
+  async findAll() {
 
+    return await this.planRepo.find({
+      order: { planIndex: 'ASC' },
+    });
+  }
 
   async verifyUpgradePayment(user, payment,dto) {
+console.log("user",user)
 
-
-    if (user.plan === dto.plan) {
-      throw new BadRequestException('You already have this plan');
-    }
+const userData = await this.userRepo.findOne({
+  where: { id: user.id },
+}); 
+if (!user) {
+  throw new NotFoundException('User not found'); 
+}
+//     if (userData && userData.plan === payment.plan) {
+//       throw new BadRequestException('You already have this plan');
+//     } 
+//     console.log("userData",userData) 
     const entity = this.paymentRepo.create({
       user,
     transactionId: payment.transactionId,
+    plan:payment.plan,
       currency: payment.currency,
       amountCurrency: payment.amountCrypto,
-      amountUsdt: payment.amountUsdt,
       walletAddress: payment.fromWallet,
       status: PaymentStatus.CONFIRMED,
     });
@@ -81,18 +98,18 @@ console.log("ggg",payment)
     await this.userRepo.save(user);
 
 
-      await this.mailService.sendMail({
-        to: user.email,
-        templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
-        dynamicTemplateData: {
-          name: user.name,
-          plan: user.plan,
-          amount: payment.amountUsdt,
-          walletAddress:payment.fromWallet,
-          transactionId: payment.transactionId,
-          date: new Date().toLocaleDateString(),
-        },
-      });
+      // await this.mailService.sendMail({
+      //   to: user.email,
+      //   templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
+      //   dynamicTemplateData: {
+      //     name: user.name,
+      //     plan: user.plan,
+      //     amount: payment.amountUsdt,
+      //     walletAddress:payment.fromWallet,
+      //     transactionId: payment.transactionId,
+      //     date: new Date().toLocaleDateString(),
+      //   },
+      // });
     return entity;
   }
 

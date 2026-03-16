@@ -84,15 +84,17 @@ console.log("jjj",token)
     const resetUrl = `${process.env.baseUrl}/auth/reset-password?token=${token}`;
 
 
-    await this.mailService.sendMail({
-      to: user.email,
-      templateId : process.env.SENDGRID_PASSWORD_RESET || "",
-      dynamicTemplateData: {
-        name: user.name,
-        resetUrl:resetUrl,
-        date: new Date().toLocaleDateString(),
-      },
-    });
+   
+
+    // await this.mailService.sendMail({
+    //   to: user.email,
+    //   templateId : process.env.SENDGRID_PASSWORD_RESET || "",
+    //   dynamicTemplateData: {
+    //     name: user.name,
+    //     resetUrl:resetUrl,
+    //     date: new Date().toLocaleDateString(),
+    //   },
+    // });
 
     return { message: 'Password reset link sent. Please check your email.' };
   }

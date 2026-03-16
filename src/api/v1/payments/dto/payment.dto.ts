@@ -12,10 +12,6 @@ export class VerifyPaymentDto {
   currency: string;
 
   @IsNotEmpty({ message: 'amount is required' })
-  amountUsdt: number;
-
-
-  @IsNotEmpty({ message: 'amount is required' })
   amountCurrency: number;
 
   @IsNotEmpty({ message: 'transaction id is required' })
@@ -24,5 +20,4 @@ export class VerifyPaymentDto {
   @IsNotEmpty({ message: 'wallet address is required' })
   walletAddress: string;
 }
-
 

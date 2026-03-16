@@ -14,8 +14,8 @@ export class SymbolSyncService {
 
 
 
-
-  // @Cron('*/1 * * * *')
+  // @Cron('*/30 * * * *') 
+  // @Cron('*/5 * * * *')  
   async syncAllExchanges() {
     this.logger.log('Starting symbol sync');
 
