@@ -31,7 +31,6 @@ export class AuthService {
       email: dto.email,
       name: dto.name,
       password: hashedPassword,
-      plan: dto.plan ?? UserPlan.BASIC, // default if not provided
       newsletter: dto.newsletter ?? false,
       agreeToTerms: dto.agreeToTerms,
     
@@ -86,15 +85,15 @@ console.log("jjj",token)
 
    
 
-    // await this.mailService.sendMail({
-    //   to: user.email,
-    //   templateId : process.env.SENDGRID_PASSWORD_RESET || "",
-    //   dynamicTemplateData: {
-    //     name: user.name,
-    //     resetUrl:resetUrl,
-    //     date: new Date().toLocaleDateString(),
-    //   },
-    // });
+    await this.mailService.sendMail({
+      to: user.email,
+      templateId : process.env.SENDGRID_PASSWORD_RESET || "",
+      dynamicTemplateData: {
+        name: user.name,
+        resetUrl:resetUrl,
+        date: new Date().toLocaleDateString(),
+      },
+    });
 
     return { message: 'Password reset link sent. Please check your email.' };
   }

@@ -17,11 +17,12 @@ export class UserEntity {
   @Column({type: 'varchar', nullable: true })
   companyName?:  string | null;
 
-  @Column()
-  password: string; // hashed password
+  @Column()  
+  password: string; // hashed password  
 
-  @Column({ type: 'enum', enum: UserPlan, })
-  plan: UserPlan;
+  @Column({ type: 'enum', enum: UserPlan ,   nullable: true
+})
+  plan?: UserPlan;
 
   @Column({ default: false })
   newsletter: boolean; // receive updates from Pro API
