@@ -20,7 +20,7 @@ export class UserEntity {
   @Column()
   password: string; // hashed password
 
-  @Column({ type: 'enum', enum: UserPlan, default: UserPlan.BASIC })
+  @Column({ type: 'enum', enum: UserPlan, })
   plan: UserPlan;
 
   @Column({ default: false })
