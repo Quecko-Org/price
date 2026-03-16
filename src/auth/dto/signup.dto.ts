@@ -1,6 +1,5 @@
 
 
-import { UserPlan } from '@/common/enums/payment.enum';
 import { IsEmail, IsNotEmpty, IsString, IsBoolean, IsEnum } from 'class-validator';
 
 
