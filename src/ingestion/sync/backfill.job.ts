@@ -14,7 +14,7 @@ export class BackfillJob {
   /**
    * Backfill ALL symbols (first-time bootstrap)
    */
-  @Cron('*/10 * * * * *')
+  // @Cron('*/10 * * * * *')
   async runInitialBackfill() {
     const symbols = await this.symbolsService.getAllSymbols();
     for (const s of symbols.slice(0,1)) {

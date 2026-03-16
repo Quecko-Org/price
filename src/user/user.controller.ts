@@ -1,5 +1,5 @@
 
-import { Controller, Patch, Body, Param, Delete, UseGuards, Req } from '@nestjs/common';
+import { Controller, Patch, Body, Param, Delete, UseGuards, Req, Get } from '@nestjs/common';
 import { UserService } from './user.service';
 import { UpdateUserDto } from './dto/user.dto';
 import { AuthGuard } from '@nestjs/passport';
@@ -13,7 +13,11 @@ export class UserController {
 
 
 
-
+  @UseGuards(AuthGuard('jwt'))
+  @Get()
+  list(@Req() req) {
+    return this.usersService.user(req.user.id);
+  }
 
   @UseGuards(AuthGuard('jwt'))
   @Patch()
