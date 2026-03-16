@@ -23,7 +23,7 @@ export class PaymentsService {
 
   ) {}
   async storePayment(user, payment,dto) {
-console.log("ggg")
+console.log("ggg",payment)
     const entity = this.paymentRepo.create({
       user,
     transactionId: payment.transactionId,
