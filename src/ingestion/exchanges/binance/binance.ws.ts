@@ -20,63 +20,99 @@ export class BinanceWebSocket {
     symbolMarketMap: Record<string, number>,
     symbolMetaMap: Record<string, { base: string; quote: string }>
   ) {
-
+  
     const streams = symbols
       .map(s => `${s.toLowerCase()}@kline_1m`)
       .join("/");
-
-    const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
-
+  
+    const url = `wss://data-stream.binance.vision/stream?streams=${streams}`;
+  
+    let retry = 1;
+    let isAlive = true;
+    let pingInterval: NodeJS.Timeout;
+    let reconnectTimer: NodeJS.Timeout;
+  
     const ws = new WebSocket(url);
-
+  
     this.sockets.push(ws);
-
+  
     ws.on("open", () => {
-      this.logger.log(`Binance WS connected (${symbols.length})`);
-    });
-
-    ws.on("message", msg => {
-
-      const data = JSON.parse(msg.toString());
-
-      if (!data?.data?.k) return;
-
-      const k = data.data.k;
-
-      const key = `${Exchange.BINANCE}:${k.s}`;
-
-      const marketId = symbolMarketMap[key];
-      if (!marketId) return;
-
-      const meta = symbolMetaMap[key];
-      if (!meta) return;
-
-      this.aggregationService.handleLiveCandle(
-        marketId,
-        Exchange.BINANCE,
-        {
-          exchange: Exchange.BINANCE,
-          openTime: k.t,
-          quote: meta.quote,
-          open: +k.o,
-          high: +k.h,
-          low: +k.l,
-          close: +k.c,
-          volume: +k.v,
-          isFinal: k.x,
+      retry = 1;
+      this.logger.log(`✅ Binance WS connected`);
+  
+      // ❤️ heartbeat
+      pingInterval = setInterval(() => {
+        if (!isAlive) {
+          this.logger.warn('💀 No pong → reconnect');
+          ws.terminate();
+          return;
         }
-      );
+  
+        isAlive = false;
+        ws.ping();
+      }, 30000);
+  
+      // ⏱️ reconnect before 24h
+      reconnectTimer = setTimeout(() => {
+        this.logger.warn('♻️ Forced reconnect before 24h');
+        ws.close();
+      }, 23 * 60 * 60 * 1000);
     });
-
+  
+    ws.on("pong", () => {
+      isAlive = true;
+    });
+  
+    ws.on("message", msg => {
+      try {
+        const data = JSON.parse(msg.toString());
+        if (!data?.data?.k) return;
+  
+        const k = data.data.k;
+        const key = `${Exchange.BINANCE}:${k.s}`;
+  
+        const marketId = symbolMarketMap[key];
+        if (!marketId) return;
+  
+        const meta = symbolMetaMap[key];
+        if (!meta) return;
+        this.aggregationService.handleLiveCandle(
+          marketId,
+          Exchange.BINANCE,
+          {
+            exchange: Exchange.BINANCE,
+            openTime: k.t,
+            quote: meta.quote,
+            open: +k.o,
+            high: +k.h,
+            low: +k.l,
+            close: +k.c,
+            volume: +k.v,
+            isFinal: k.x,
+          }
+        );
+  
+      } catch (err) {
+        this.logger.error('Parse error', err);
+      }
+    });
+  
     ws.on("close", () => {
-      this.logger.warn(`Binance WS closed (${symbols.length})`);
+      this.logger.warn(`❌ Binance WS closed`);
+  
+      clearInterval(pingInterval);
+      clearTimeout(reconnectTimer);
+  
+      const delay = Math.min(30000, retry * 3000);
+  
       setTimeout(() => {
+        retry++;
         this.connect(symbols, symbolMarketMap, symbolMetaMap);
-      }, 3000);
+      }, delay);
     });
-
+  
     ws.on("error", err => {
-      this.logger.error("Binance WS error", err);
+      this.logger.error("❌ Binance WS error", err);
       ws.close();
     });
   }
