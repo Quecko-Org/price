@@ -31,6 +31,7 @@ export class AuthService {
       email: dto.email,
       name: dto.name,
       password: hashedPassword,
+      plan: dto?.plan , // default if not provided
       newsletter: dto.newsletter ?? false,
       agreeToTerms: dto.agreeToTerms,
     

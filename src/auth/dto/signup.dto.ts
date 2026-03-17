@@ -1,5 +1,6 @@
 
 
+import { UserPlan } from '@/common/enums/payment.enum';
 import { IsEmail, IsNotEmpty, IsString, IsBoolean, IsEnum } from 'class-validator';
 
 
@@ -16,10 +17,12 @@ export class SignUpDto {
   @IsNotEmpty({ message: 'Password is required' })
   password: string;
 
+  @IsEnum(UserPlan, { message: 'Plan must be Free, basic, growth or pro' })
+  plan?: UserPlan;
 
   @IsBoolean()
   newsletter?: boolean;
-
+ 
   @IsBoolean()
   agreeToTerms: boolean;
 }
