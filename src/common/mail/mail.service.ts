@@ -17,19 +17,21 @@ export class MailService {
     dynamicTemplateData?: Record<string, any>;
   }) {
     try {
+      console.log("dynamicTemplateData",options.dynamicTemplateData)
       const msg: any = {
-        from: {
-          email: process.env.SENDGRID_FROM_EMAIL,
-          name: process.env.SENDGRID_FROM_NAME || 'Your App',
-        },
         to: options.to,
-      };
+        from: { email: 'no-reply@em2287.price.agency', name: 'Price Agency' },    
+            templateId:options.templateId,
+        dynamicTemplateData: options.dynamicTemplateData,
+        categories: ['verification'],
 
-        msg.templateId = process.env.SENDGRID_PAYMENT_CONFIRMATION;
-        msg.dynamicTemplateData = options.dynamicTemplateData;
-      
+
+      };
+  
+        
 
       const info = await sgMail.send(msg);
+      console.log("iiiiiii",info)
       this.logger.log(`Email sent to ${options.to}`);
       return info;
     } catch (err) {

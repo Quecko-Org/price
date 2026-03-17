@@ -27,11 +27,18 @@ export class PaymentsService {
 
   ) {}
   async storePayment(user, payment,dto) {
+    console.log("ggg",user,payment)
 
+    const existingUser = await this.userRepo.findOne({
+      where: { id: user.id },
+    });
+    
+    if (!existingUser) throw new Error('User not found');
+    
 console.log("ggg",user,payment)
     const entity = this.paymentRepo.create({
-      user,
-    transactionId: payment.transactionId,
+      user: { id: existingUser.id }, 
+      transactionId: payment.transactionId,
     plan:payment.plan,
       currency: payment.currency,
       amountCurrency: payment.amountCrypto,
@@ -39,23 +46,27 @@ console.log("ggg",user,payment)
       status: PaymentStatus.CONFIRMED,
     });
   
-    // await this.paymentRepo.save(entity);
-  
-    user.plan = dto.plan;
-  
-    await this.userRepo.save(user);
-    // await this.mailService.sendMail({
-    //   to: user.email,
-    //   templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
-    //   dynamicTemplateData: {
-    //     name: user.name,
-    //     plan: user.plan,
-    //     amount: payment.amountUsdt,
-    //     walletAddress:payment.fromWallet,
-    //     transactionId: payment.transactionId,
-    //     date: new Date().toLocaleDateString(),
-    //   },
-    // });
+   const savedPayment = await this.paymentRepo.save(entity);
+    if (savedPayment.status === PaymentStatus.CONFIRMED) {
+          existingUser.plan = dto.plan; // or dto.plan
+      existingUser.currentPlan = savedPayment.plan;
+      await this.userRepo.save(existingUser);
+    }
+    
+
+    await this.mailService.sendMail({
+      to: user.email,
+      templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
+      dynamicTemplateData: {
+        name: existingUser.name,
+        plan: dto.plan,
+        currency:payment.currency,
+        amount: payment.amountCrypto,
+        walletAddress:payment.fromWallet,
+        transactionId: payment.transactionId,
+        date: new Date().toLocaleDateString(),
+      },
+    });
     return entity;
   }
  
@@ -71,18 +82,19 @@ console.log("ggg",user,payment)
   async verifyUpgradePayment(user, payment,dto) {
 console.log("user",user)
 
-const userData = await this.userRepo.findOne({
+const existingUser = await this.userRepo.findOne({
   where: { id: user.id },
-}); 
-if (!user) {
-  throw new NotFoundException('User not found'); 
-}
+});
+
+if (!existingUser) throw new Error('User not found');
+
+
 //     if (userData && userData.plan === payment.plan) {
 //       throw new BadRequestException('You already have this plan');
 //     } 
 //     console.log("userData",userData) 
     const entity = this.paymentRepo.create({
-      user,
+      user: { id: existingUser.id }, 
     transactionId: payment.transactionId,
     plan:payment.plan,
       currency: payment.currency,
@@ -91,25 +103,29 @@ if (!user) {
       status: PaymentStatus.CONFIRMED,
     });
   
-    await this.paymentRepo.save(entity);
+    
   
-    user.plan = dto.plan;
-  
-    await this.userRepo.save(user);
+    const savedPayment = await this.paymentRepo.save(entity);
+    if (savedPayment.status === PaymentStatus.CONFIRMED) {
+          existingUser.plan = dto.plan; // or dto.plan
+      existingUser.currentPlan = savedPayment.plan;
+      await this.userRepo.save(existingUser);
+    }
 
 
-      // await this.mailService.sendMail({
-      //   to: user.email,
-      //   templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
-      //   dynamicTemplateData: {
-      //     name: user.name,
-      //     plan: user.plan,
-      //     amount: payment.amountUsdt,
-      //     walletAddress:payment.fromWallet,
-      //     transactionId: payment.transactionId,
-      //     date: new Date().toLocaleDateString(),
-      //   },
-      // });
+    await this.mailService.sendMail({
+      to: user.email,
+      templateId : process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
+      dynamicTemplateData: {
+        name: existingUser.name,
+        plan: dto.plan,
+        currency:payment.currency, 
+        amount: payment.amountCrypto,
+        walletAddress:payment.fromWallet,
+        transactionId: payment.transactionId,
+        date: new Date().toLocaleDateString(),
+      },
+    });
     return entity;
   }
 
@@ -120,7 +136,7 @@ if (!user) {
       order: { createdAt: 'DESC' },
     });}catch(error){
       console.log(error)
-    }
+    }   
   }
 
 
@@ -130,11 +146,11 @@ if (!user) {
       where: { id: userId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
-    }
+      throw new NotFoundException('payment  not found');
+    } 
   
     return {
-      plan: user.plan ,
+      currentPlan: user.currentPlan ,
     };
   }
 }

@@ -3,6 +3,7 @@ export enum PaymentStatus {
     FAILED = 'failed',
   }
   export enum UserPlan {
+    FREE='free',
     BASIC = 'basic',  //99
     GROWTH = 'growth', //299
     PRO = 'pro',//999

@@ -39,7 +39,7 @@ export class UserEntity {
 
 
   @OneToMany(() => PaymentEntity, payment => payment.user)
-  payments: PaymentEntity[];
+payments: PaymentEntity[];
 
   @Column({ default: false })
   agreeToTerms: boolean;
@@ -49,5 +49,7 @@ export class UserEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   resetPasswordExpires: Date | null;
+  @Column({ type: 'enum', enum: UserPlan, default: UserPlan.FREE })
+  currentPlan: UserPlan;
   
 }

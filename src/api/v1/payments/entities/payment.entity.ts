@@ -16,7 +16,7 @@ import { UserPlan,PaymentStatus } from '@/common/enums/payment.enum';
     @PrimaryGeneratedColumn()
     id: number;
   
-    @ManyToOne(() => UserEntity)
+    @ManyToOne(() => UserEntity, user => user.payments)
     user: UserEntity;
   
     @Column({ type: 'enum', enum: UserPlan })
