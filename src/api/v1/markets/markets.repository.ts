@@ -68,9 +68,8 @@ try {
     marketId: number,
   
   ) {
-
-    const rows = await this.dataSource.query(`
-      SELECT close
+     const rows = await this.dataSource.query(`
+      SELECT close,"openTime"
       FROM aggregated_candles_1m
       WHERE "marketId" = $1
       ORDER BY "openTime" DESC
