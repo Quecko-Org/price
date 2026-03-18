@@ -93,7 +93,7 @@ export class MarketDataService implements OnModuleInit {
 
         return this.marketRepo.findOne({
           where: {
-            base: 'BTC',
+            base: symbol,
           },
         });
       }
