@@ -44,11 +44,12 @@ export class MarketsController {
     if (!market) {
       return { s: 'error', message: 'symbol not found' };
     }
-    const price = await this.marketsService.getLatestPrice(market.id,);
+    const {time,price} = await this.marketsService.getLatestPrice(market.id,);
 
     return {
       symbol,
       price,
+      time
     };
   }
 

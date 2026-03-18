@@ -41,7 +41,9 @@ export class MarketsService {
     );
     
 
-    return rows[0]?.close ?? null;
+    return {
+      time:rows[0]?.openTime,
+       price: rows[0]?.close ?? null}
   }
 
 
