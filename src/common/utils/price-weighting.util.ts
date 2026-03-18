@@ -30,13 +30,26 @@ export function aggregateCandles(candles: ExchangeCandle[]) {
   const closes = valid.map(c => c.close);
   const medianPrice = median(closes);
 
-  // 3️⃣ Remove outliers (±5%)
-  const filtered = valid.filter(c => {
-    const diff = Math.abs(c.close - medianPrice) / medianPrice;
-    return diff < 0.05;
-  });
+  // // 3️⃣ Remove outliers (±5%)
+  // const filtered = valid.filter(c => {
+  //   const diff = Math.abs(c.close - medianPrice) / medianPrice;
+  //   return diff < 0.05;
+  // });
+
+const filtered = valid.filter(c => {
+  const closeDiff = Math.abs(c.close - medianPrice) / medianPrice;
+  const highDiff = Math.abs(c.high - medianPrice) / medianPrice;
+  const lowDiff  = Math.abs(c.low - medianPrice) / medianPrice;
+
+  return closeDiff < 0.05 && highDiff < 0.1 && lowDiff < 0.1;
+});
 
   if (!filtered.length) return null;
+
+  const removed = valid.filter(c => !filtered.includes(c));
+  if (removed.length) console.warn("Removed outlier candles:", removed);
+
+
 
   // 4️⃣ Sort by time
   filtered.sort((a,b)=>a.openTime - b.openTime);

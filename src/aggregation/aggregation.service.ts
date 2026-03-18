@@ -27,6 +27,8 @@ export class AggregationService {
     private readonly mexc: MexcService,
     private readonly symbolsService: SymbolsService,
 
+
+
   ) { }
 
 
@@ -213,7 +215,8 @@ export class AggregationService {
     candle: ExchangeLiveCandle,
   ) {
     const fxRate = this.symbolsService.getRate(candle.quote);
-  
+     if (!fxRate || fxRate <= 0) return null;
+
     const usdCandle = {
       exchange,
       openTime: candle.openTime,
@@ -247,10 +250,20 @@ async flushClosedMinutes() {
 
   for (const { symbolId, openTime, candle } of this.liveBuffer.entries()) {
     if (now < openTime + 70_000) continue;
-
+// console.log("candle",candle)
     const exchangeCandles = Array.from(candle.exchanges.values());
+    // console.log("exchangeCandles",exchangeCandles)
 
+
+    
     if (!exchangeCandles.length) continue;
+
+    // Filter obviously invalid candles
+    const validCandles = exchangeCandles.filter(c =>
+      c.high > 0 && c.low > 0 && c.high < 1_000_000 && c.low < 1_000_000
+    );
+
+    if (!validCandles.length) continue;
 
     const aggregated = aggregateCandles(exchangeCandles);
 
