@@ -47,12 +47,10 @@ export class MarketsService {
 
 
 
-  async get24hStats(marketId: number,  from?: number,
-    to?: number) {
+  async get24hStats(marketId: number) {
     const rows = await this.repo.get24hStats(
       marketId,
-      from,
-      to,
+
     );
 
    

@@ -54,14 +54,14 @@ export class MarketsController {
 
 
   @Get(':symbol/stats')
-  async get24hStats(@Param('symbol') symbol: string, @Query() query: MarketsQueryDto) {
+  async get24hStats(@Param('symbol') symbol: string,) {
 
     const market = await this.marketDataService.findBySymbol(symbol);
     if (!market) {
       return { s: 'error', message: 'symbol not found' };
     }
-    const price = await this.marketsService.get24hStats(market.id, query.from,
-      query.to);
+    const price = await this.marketsService.get24hStats(market.id
+ );
 
     return {
       symbol,

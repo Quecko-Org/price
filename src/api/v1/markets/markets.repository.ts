@@ -84,9 +84,7 @@ try {
 
 
   async get24hStats(
-    marketId: number,
-    from?: number,
-    to?: number,
+    marketId: number
   ) {
 
    let froms = Math.floor(Date.now() / 1000);
