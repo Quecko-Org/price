@@ -89,10 +89,9 @@ const existingUser = await this.userRepo.findOne({
 if (!existingUser) throw new Error('User not found');
 
 
-//     if (userData && userData.plan === payment.plan) {
-//       throw new BadRequestException('You already have this plan');
-//     } 
-//     console.log("userData",userData) 
+    if (existingUser && existingUser.plan == dto.plan) {
+      throw new BadRequestException('You already have this plan');
+    } 
     const entity = this.paymentRepo.create({
       user: { id: existingUser.id }, 
     transactionId: payment.transactionId,
