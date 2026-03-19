@@ -79,9 +79,8 @@ console.log("jjj",token)
     user.resetPasswordExpires = addMinutes(new Date(), 30);
 
     await this.userRepo.save(user);
-
     // Send email with reset link
-    const resetUrl = `${process.env.baseUrl}/auth/reset-password?token=${token}`;
+    const resetUrl = `${process.env.baseUrl}/forgetpassword?token=${token}`;
 
 
    
