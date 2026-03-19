@@ -469,11 +469,15 @@ export class SymbolsService {
       console.error('Failed fetching FX rates', err);
     }
   }
-
   getRate(currency: string): number {
     if (currency === 'USD') return 1;
-    // console.log("rate",this.rates)
-    return this.rates.get(currency) ?? 1; // fallback to 1 if missing
+  
+    const rate = this.rates.get(currency);
+  
+    if (!rate || rate <= 0) return 0;
+  
+    // 🔥 IMPORTANT: invert rate
+    return 1 / rate;
   }
 
   @Cron('*/1 * * * *')

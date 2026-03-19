@@ -214,9 +214,14 @@ export class AggregationService {
     exchange: Exchange,
     candle: ExchangeLiveCandle,
   ) {
-    const fxRate = this.symbolsService.getRate(candle.quote);
-     if (!fxRate || fxRate <= 0) return null;
+    const STABLES = ['USDT', 'USDC', 'FDUSD', 'TUSD'];
 
+    let fxRate = 1;
+  
+    if (!STABLES.includes(candle.quote)) {
+      fxRate = this.symbolsService.getRate(candle.quote);
+      if (!fxRate || fxRate <= 0) return;
+    }
     const usdCandle = {
       exchange,
       openTime: candle.openTime,
