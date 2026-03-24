@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { ApiModule } from './api/api.module';
 import { UserModule } from './user/user.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -26,11 +27,12 @@ import { ApiUsageModule } from './api-usage/api-usage.module';
       autoLoadEntities: true,
       synchronize: true, // dev only
     }),
+    ScheduleModule.forRoot(),
     ExchangesModule,
     SymbolsModule,
     SyncModule,
     MarketDataModule,
-    OnchainModule,
+    // OnchainModule,
     AuthModule,
     ApiModule,
     UserModule,

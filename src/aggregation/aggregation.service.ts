@@ -13,10 +13,13 @@ import { SymbolExchangeEntity } from "@/ingestion/symbols/entities/symbol-exchan
 import axios from "axios";
 import { LiveCandleBuffer } from "./live/live-buffer";
 import { Cron } from "@nestjs/schedule";
+import { OnModuleInit } from '@nestjs/common';
+import { convertToUSD, updateCryptoPrice } from "@/common/utils/fx-engine.util";
 
 @Injectable()
-export class AggregationService {
+export class AggregationService  implements OnModuleInit {
   private liveBuffer = new LiveCandleBuffer();
+  private marketCache = new Map<number, { base: string; quote: string }>();
 
   constructor(
     @InjectRepository(Candle1mEntity)
@@ -27,11 +30,23 @@ export class AggregationService {
     private readonly mexc: MexcService,
     private readonly symbolsService: SymbolsService,
 
-
-
+    
   ) { }
 
 
+  async onModuleInit() {
+    const markets =
+    await this.symbolsService.markets();
+    for (const m of markets) {
+      this.marketCache.set(m.id, {
+        base: m.base,
+        quote: m.quote,
+      });
+    }
+
+
+    console.log(`✅ Market cache loaded: ${this.marketCache.size}`);
+  }
 
 
   //backfill aggreagtion start
@@ -214,24 +229,13 @@ export class AggregationService {
     exchange: Exchange,
     candle: ExchangeLiveCandle,
   ) {
-    const STABLES = ['USDT', 'USDC', 'FDUSD', 'TUSD'];
-
-    let fxRate = 1;
   
-    if (!STABLES.includes(candle.quote)) {
-      fxRate = this.symbolsService.getRate(candle.quote);
-      if (!fxRate || fxRate <= 0) return;
-    }
-    const usdCandle = {
-      exchange,
-      openTime: candle.openTime,
-      open: candle.open * fxRate,
-      high: candle.high * fxRate,
-      low: candle.low * fxRate,
-      close: candle.close * fxRate,
-      quote: 'USD',
-      volume: candle.volume,
-    };
+    const usdOpen = convertToUSD(candle.open, candle.quote);
+    const usdHigh = convertToUSD(candle.high, candle.quote);
+    const usdLow = convertToUSD(candle.low, candle.quote);
+    const usdClose = convertToUSD(candle.close, candle.quote);
+  
+    if (!usdOpen || !usdHigh || !usdLow || !usdClose) return;
   
     const minute = this.minuteBucket(candle.openTime);
   
@@ -240,59 +244,163 @@ export class AggregationService {
     if (!existing) {
       existing = {
         openTime: minute,
-        exchanges: new Map(),
+        exchanges: new Map<Exchange, ExchangeCandle>(),
       };
     }
   
-    // replace latest exchange candle
-    existing.exchanges.set(exchange, usdCandle);
+    // ✅ store per-exchange latest candle
+    existing.exchanges.set(exchange, {
+      exchange,
+      openTime: candle.openTime,
+      open: usdOpen,
+      high: usdHigh,
+      low: usdLow,
+      close: usdClose,
+      volume: candle.volume || 0,
+    });
   
     this.liveBuffer.add(marketId, existing);
   }
-  @Cron('*/5 * * * * *')
-async flushClosedMinutes() {
-  const now = Date.now();
 
-  for (const { symbolId, openTime, candle } of this.liveBuffer.entries()) {
-    if (now < openTime + 70_000) continue;
-// console.log("candle",candle)
-    const exchangeCandles = Array.from(candle.exchanges.values());
-    // console.log("exchangeCandles",exchangeCandles)
+
+
+
+
+  // async handleLiveCandle(
+  //   marketId: number,
+  //   exchange: Exchange,
+  //   candle: ExchangeLiveCandle,
+  // ) {
+  //   const STABLES = ['USDT', 'USDC', 'FDUSD', 'TUSD'];
+
+  //   let fxRate = 1;
+  
+  //   if (!STABLES.includes(candle.quote)) {
+  //     fxRate = this.symbolsService.getRate(candle.quote);
+  //     if (!fxRate || fxRate <= 0) return;
+  //   }
+  //   const usdCandle = {
+  //     exchange,
+  //     openTime: candle.openTime,
+  //     open: candle.open * fxRate,
+  //     high: candle.high * fxRate,
+  //     low: candle.low * fxRate,
+  //     close: candle.close * fxRate,
+  //     quote: 'USD',
+  //     volume: candle.volume,
+  //   };
+  
+  //   const minute = this.minuteBucket(candle.openTime);
+  
+  //   let existing = this.liveBuffer.get(marketId, minute);
+  
+  //   if (!existing) {
+  //     existing = {
+  //       openTime: minute,
+  //       exchanges: new Map(),
+  //     };
+  //   }
+  
+  //   // replace latest exchange candle
+  //   existing.exchanges.set(exchange, usdCandle);
+  
+  //   this.liveBuffer.add(marketId, existing);
+  // }
+  
+  @Cron('*/5 * * * * *')
+  async flushClosedMinutes() {
+    const now = Date.now();
+  
+    for (const { symbolId, openTime } of this.liveBuffer.entries()) {
+  
+      if (now < openTime + 70_000) continue;
+  
+      const candle = this.liveBuffer.get(symbolId, openTime);
+      if (!candle) continue;
+  
+      const exchangeCandles = Array.from(candle.exchanges.values());
+  
+      if (!exchangeCandles.length) continue;
+  
+      // ✅ VALID FILTER
+      const validCandles = exchangeCandles.filter(c =>
+        c.high > 0 &&
+        c.low > 0 &&
+        c.volume > 0 &&
+        c.high < 1_000_000
+      );
+  
+      if (!validCandles.length) continue;
+  
+      // ✅ USE FILTERED DATA
+      const aggregated = aggregateCandles(validCandles);
+  
+      if (!aggregated) continue;
+  
+      // ✅ UPDATE FX ENGINE (CRITICAL)
+      const market = this.marketCache.get(symbolId);
+      if (market?.quote === 'USD') {
+   updateCryptoPrice(market.base, aggregated.close);
+      }
+  
+      // ✅ SAVE FINAL
+      await this.candleRepo.upsert(
+        {
+          marketId: symbolId,
+          openTime: new Date(openTime),
+          open: aggregated.open,
+          high: aggregated.high,
+          low: aggregated.low,
+          close: aggregated.close, // 🔥 weighted close
+          volume: aggregated.volume,
+        },
+        ['marketId', 'openTime'],
+      );
+  
+      this.liveBuffer.clear(symbolId, openTime);
+    }
+  }
+
+// async flushClosedMinutes() {
+//   const now = Date.now();
+
+//   for (const { symbolId, openTime, candle } of this.liveBuffer.entries()) {
+//     if (now < openTime + 70_000) continue;
+// // console.log("candle",candle)
+//     const exchangeCandles = Array.from(candle.exchanges.values());
+//     // console.log("exchangeCandles",exchangeCandles)
 
 
     
-    if (!exchangeCandles.length) continue;
+//     if (!exchangeCandles.length) continue;
 
-    // Filter obviously invalid candles
-    const validCandles = exchangeCandles.filter(c =>
-      c.high > 0 && c.low > 0 && c.high < 1_000_000 && c.low < 1_000_000
-    );
+//     // Filter obviously invalid candles
+//     const validCandles = exchangeCandles.filter(c =>
+//       c.high > 0 && c.low > 0 && c.high < 1_000_000 && c.low < 1_000_000
+//     );
 
-    if (!validCandles.length) continue;
+//     if (!validCandles.length) continue;
 
-    const aggregated = aggregateCandles(exchangeCandles);
+//     const aggregated = aggregateCandles(exchangeCandles);
 
-    if (!aggregated) continue;
+//     if (!aggregated) continue;
 
-    await this.candleRepo.upsert(
-      {
-        marketId: symbolId,
-        openTime: new Date(openTime),
-        open: aggregated.open,
-        high: aggregated.high,
-        low: aggregated.low,
-        close: aggregated.close,
-        volume: aggregated.volume,
-      },
-      ['marketId', 'openTime'],
-    );
+//     await this.candleRepo.upsert(
+//       {
+//         marketId: symbolId,
+//         openTime: new Date(openTime),
+//         open: aggregated.open,
+//         high: aggregated.high,
+//         low: aggregated.low,
+//         close: aggregated.close,
+//         volume: aggregated.volume,
+//       },
+//       ['marketId', 'openTime'],
+//     );
 
-    this.liveBuffer.clear(symbolId, openTime);
-  }
-}
-
-
-
+//     this.liveBuffer.clear(symbolId, openTime);
+//   }
+// }
 
 
 

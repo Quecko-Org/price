@@ -1,88 +1,105 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
-import { UNISWAP_V3_POOL_ABI } from './uniswap-ABI';
-import { sqrtPriceX96ToPrice } from './utils';
+import { Exchange } from '@/common/enums/exchanges.enums';
 import { AggregationService } from '@/aggregation/aggregation.service';
-import { Chain } from '../../common/chain.enum';
-import { Dex } from '../../common/dex.enum';
+import { EthereumProvider } from '../../providers/ethereum.provider';
+import { DexPool } from '../../common/entities/pool.entityt';
+import { PriceCacheService } from '../../common/price-cache.service';
+import { UNISWAP3_POOL_ABI } from '../../common/abi/uniswap.abi';
 
 @Injectable()
-export class UniswapV3Listener implements OnModuleInit {
-  private readonly logger = new Logger(UniswapV3Listener.name);
-  private provider: ethers.WebSocketProvider;
+export class UniswapV3Adapter {
 
-  // Example: ETH/USDC 0.05% mainnet
-  private readonly pools = [
-    {
-      address: '0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640',
-      symbol: 'ETH-USDC',
-      decimals0: 18,
-      decimals1: 6,
-    },
-  ];
+  private logger = new Logger(UniswapV3Adapter.name);
 
   constructor(
+    private readonly ethProvider: EthereumProvider,
     private readonly aggregationService: AggregationService,
+    private readonly priceCache: PriceCacheService,
   ) {}
 
-  async onModuleInit() {
-    this.provider = new ethers.WebSocketProvider(
-      process.env.ETHEREUM_WSS_RPC!,
+  start(pool: DexPool, marketId: number) {
+
+    const provider = this.ethProvider.getProvider();
+ 
+    const contract = new ethers.Contract(
+      pool.poolAddress,
+      UNISWAP3_POOL_ABI, // ✅ correct
+      provider
     );
 
-    for (const pool of this.pools) {
-      this.listenToPool(pool);
-    }
+    contract.on("Swap", (...args) => {
+      try {
+
+        const sqrtPriceX96 = args[4] as bigint;
+
+        const price = this.sqrtPriceToPrice(sqrtPriceX96);
+
+        const volume = Math.abs(Number(args[2])); // amount0
+
+        const usdPrice = this.normalizeToUSD(price, pool);
+
+        if (!usdPrice) return;
+
+        this.aggregationService.handleLiveCandle(
+          marketId,
+          Exchange.UNISWAP_V3,
+          {
+            exchange: Exchange.UNISWAP_V3,
+            openTime: Date.now(),
+            open: usdPrice,
+            high: usdPrice,
+            low: usdPrice,
+            close: usdPrice,
+            volume,
+            quote: 'USD',
+            isFinal: false,
+          }
+        );
+
+      } catch (err) {
+        this.logger.error(`Swap parse error ${pool.poolAddress}`, err);
+      }
+    });
+
+    this.logger.log(`✅ Listening Uniswap pool: ${pool.poolAddress}`);
   }
 
-  private listenToPool(poolConfig: any) {
-    const contract = new ethers.Contract(
-      poolConfig.address,
-      UNISWAP_V3_POOL_ABI,
-      this.provider,
-    );
+  // 🔥 price conversion
+  private sqrtPriceToPrice(sqrtPriceX96: bigint): number {
+    const num = Number(sqrtPriceX96) ** 2;
+    const denom = 2 ** 192;
+    return num / denom;
+  }
 
-    contract.on(
-      'Swap',
-      async (
-        sender,
-        recipient,
-        amount0,
-        amount1,
-        sqrtPriceX96,
-        liquidity,
-        tick,
-        event,
-      ) => {
-        try {
-          const block = await event.getBlock();
-          const timestamp = block.timestamp;
+  // 🔥 USD normalization (CRITICAL)
+  private normalizeToUSD(price: number, pool: DexPool): number | null {
 
-          const price = sqrtPriceX96ToPrice(
-            sqrtPriceX96,
-            poolConfig.decimals0,
-            poolConfig.decimals1,
-          );
+    const t0 = pool.token0;
+    const t1 = pool.token1;
 
-          const volume =
-            Math.abs(Number(amount0)) / 10 ** poolConfig.decimals0;
+    // USDC / USDT
+    if (t1.symbol === 'USDC' || t1.symbol === 'USDT') {
+      return price;
+    }
 
-        //   this.aggregationService.handleDexTrade({
-        //     symbol: poolConfig.symbol,
-        //     chain: Chain.ETHEREUM,
-        //     dex: Dex.UNISWAP_V3,
-        //     poolAddress: poolConfig.address,
-        //     price,
-        //     volume,
-        //     timestamp,
-        //   });
+    if (t0.symbol === 'USDC' || t0.symbol === 'USDT') {
+      return 1 / price;
+    }
 
-        } catch (err) {
-          this.logger.error('Swap handling error', err);
-        }
-      },
-    );
+    // ETH pairs
+    if (t1.symbol === 'WETH' || t1.symbol === 'ETH') {
+      const ethPrice = this.priceCache.getPriceSafe('ETH');
+      if (!ethPrice) return null;
+      return price * ethPrice;
+    }
 
-    this.logger.log(`Listening to V3 pool: ${poolConfig.symbol}`);
+    if (t0.symbol === 'WETH' || t0.symbol === 'ETH') {
+      const ethPrice = this.priceCache.getPriceSafe('ETH');
+      if (!ethPrice) return null;
+      return (1 / price) * ethPrice;
+    }
+
+    return null;
   }
 }

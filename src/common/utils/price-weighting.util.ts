@@ -89,9 +89,8 @@ const filtered = valid.filter(c => {
     open,
     high,
     low,
-    close,
+    close : weightedClose,
     volume,
-    weightedClose
   };
 }
 

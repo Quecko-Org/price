@@ -1,8 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity('plans')
 export class PlanEntity {
-
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -14,4 +13,32 @@ export class PlanEntity {
 
   @Column('decimal')
   priceUsd: number;
+
+  // --- Plan rules ---
+  @Column()
+  maxApiKeys: number; // how many keys user can create
+
+  @Column()
+  maxEndpoints: number; // how many endpoints per key
+
+  @Column()
+  monthlyApiCalls: number; // total API calls per month
+
+  @Column({ default: false })
+  realtimeData: boolean; // basic real-time
+
+  @Column({ default: false })
+  historicalData: boolean; // historical access
+
+  @Column({ default: false })
+  marketOverview: boolean; // market overview access
+
+  @Column({ default: false })
+  onchainMetrics: boolean; // on-chain metrics access
+
+  @Column({ default: false })
+  chartData: boolean; // chat access
+
+  @Column({ default: 'community' })
+  supportLevel: 'community' | 'email' | 'priority'; // support type
 }
