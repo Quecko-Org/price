@@ -32,7 +32,7 @@ import { UserPlan,PaymentStatus } from '@/common/enums/payment.enum';
     @Column()
     currency: string;
 
-    @Column()
+    @Column() 
     walletAddress: string;
   
     @Column({ nullable: true })
@@ -49,3 +49,5 @@ import { UserPlan,PaymentStatus } from '@/common/enums/payment.enum';
     createdAt: Date;
   
   }
+
+

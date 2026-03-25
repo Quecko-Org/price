@@ -464,7 +464,7 @@ export class SymbolsService {
         // console.log("currency, rate",currency, rate)
         this.rates.set(currency, Number(rate));
         await this.fxRepo.upsert({ currency, rateToUSD: Number(rate),lastUpdated: new Date() }, ['currency']);
-      }
+      } 
     } catch (err) {
       console.error('Failed fetching FX rates', err);
     }

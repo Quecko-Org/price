@@ -72,4 +72,12 @@ export class PaymentsController {
   history(@Req() req) {
     return this.paymentService.getUserPayments(req.user.id);
   }
+
+  // @Get()
+  // @UseGuards(AuthGuard('jwt'))
+  // async getPlans(@Req() req) {
+  //   const userId = req.user?.id;
+  //   return this.paymentService.getPlansWithUsage(userId);
+  // }
+
 }

@@ -28,7 +28,7 @@ export class ApiUsageController {
    */
   @UseGuards(AuthGuard('jwt'))
   @Get('daily')
-  async getDailyUsage(@Req() req) {
+  async getUsagePerKey(@Req() req) {
     const userId = req.user.id;
     const dailyData = await this.apiUsageService.getDailyUsage(userId);
     return {
@@ -36,4 +36,44 @@ export class ApiUsageController {
       data: dailyData,
     };
   }
+
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('daily-key-usage')
+  async getDailyUsagePerKey(@Req() req) {
+    const userId = req.user.id;
+    const dailyData = await this.apiUsageService.getUsagePerKey(userId);
+    return {
+      success: true,
+      data: dailyData,
+    };
+  }
+
+
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('daily-endpoints-usage')
+  async getTopEndpoints(@Req() req) {
+    const userId = req.user.id;
+    const Data = await this.apiUsageService.getTopEndpoints(userId);
+    return {
+      success: true,
+      data: Data,
+    };
+  }
+
+
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('global-overview')
+  async getGlobalOverview(@Req() req) {
+    const dailyData = await this.apiUsageService.getGlobalOverview();
+    return {
+      success: true,
+      data: dailyData,
+    };
+  }
+  
+  
+
 }

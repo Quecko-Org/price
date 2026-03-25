@@ -13,7 +13,7 @@ export class MarketsRepository {
     from?: number,
     to?: number,
     limit = 500,
-  ) {
+  ) { 
 console.log("interval",interval,marketId)
     const table = intervalTable(interval);
 

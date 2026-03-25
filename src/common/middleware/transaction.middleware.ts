@@ -36,7 +36,7 @@ export class BlockchainPaymentMiddleware implements NestMiddleware {
   constructor(
     @InjectRepository(PaymentEntity)
     private paymentRepo: Repository<PaymentEntity>,
-  ) {}
+  ) { }
 
   async use(req: Request, res: Response, next: NextFunction) {
 
@@ -78,7 +78,7 @@ export class BlockchainPaymentMiddleware implements NestMiddleware {
       if (!tx)
         throw new BadRequestException('Transaction not found');
 
-console.log("tx",tx)
+      console.log("tx", tx)
       /*
       -----------------------------------------
       3️⃣ Ensure transaction sent to contract
@@ -99,7 +99,7 @@ console.log("tx",tx)
         data: tx.data,
         value: tx.value,
       });
-console.log("parsed",parsedTx)
+      console.log("parsed", parsedTx)
       if (
         parsedTx?.name !== 'purchasePlanWithToken' &&
         parsedTx?.name !== 'purchasePlanWithETH'
@@ -139,7 +139,7 @@ console.log("parsed",parsedTx)
             break;
           }
 
-        } catch {}
+        } catch { }
 
       }
 
@@ -167,7 +167,7 @@ console.log("parsed",parsedTx)
       */
 
       const eventPlan = PLAN_MAP[eventPlanNumber];
-console.log("plannnnn",eventPlanNumber,eventPlan,plan)
+      console.log("plannnnn", eventPlanNumber, eventPlan, plan)
       if (!eventPlan)
         throw new BadRequestException('Invalid plan from contract');
 
@@ -197,7 +197,7 @@ console.log("plannnnn",eventPlanNumber,eventPlan,plan)
       11️⃣ Validate plan
       -----------------------------------------
       */
-     console.log("eventPlan",eventPlan,plan)
+      console.log("eventPlan", eventPlan, plan)
 
       if (eventPlan !== plan)
         throw new BadRequestException('Plan mismatch');

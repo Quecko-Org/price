@@ -3,9 +3,10 @@ import { ApiUsageController } from './api-usage.controller';
 import { ApiUsageService } from './api-usage.service';
 import { ApiUsageEntity } from './entities/api-usage.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { SymbolEntity } from '@/ingestion/symbols/entities/symbol.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ApiUsageEntity])],
+  imports: [TypeOrmModule.forFeature([ApiUsageEntity,SymbolEntity])],
   controllers: [ApiUsageController],
   providers: [ApiUsageService]
 })
