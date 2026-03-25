@@ -104,9 +104,11 @@ components:
         createdAt:
           type: string
           format: date-time
-        lastUsedAt:
+        monthlyCalls:
+          type: number
+        lastCallAt:
           type: string
-          format: date-time
+          format: date-time  
     ApiUsageOverview:
       type: object
       properties:
@@ -129,6 +131,28 @@ components:
         requests:
           type: integer
           example: 10
+    Plan:
+      type: object
+      properties:
+        name:
+          type: string
+          example: basic
+        priceUsd:
+          type: number
+          example: 99
+        monthlyApiCalls:
+          type: number
+          example: 100000
+        maxApiKeys:
+          type: number
+          example: 3
+        marketOverview:
+          type: boolean
+        realtimeData:
+          type: boolean
+        supportLevel:
+          type: string
+          example: email      
 security:
   - BearerAuth: []
 
@@ -169,10 +193,6 @@ paths:
                 password:
                   type: string
                   example: strongPassword123
-                plan:
-                  type: string
-                  enum: [basic, growth, pro]
-                  example: basic
                 newsletter:
                   type: boolean
                   example: true
@@ -672,3 +692,24 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/ApiUsageDaily'
+  /api/v1/usage/global-overview:
+    get:
+      tags: [Usage]
+      summary: Get global API usage
+      security:
+        - BearerAuth: []
+      responses:
+        200:
+          description: Global API usage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiUsageDaily'                    
