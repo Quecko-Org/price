@@ -15,9 +15,6 @@ import { PoolRankingService } from './adapters/uniswap/pool-ranking-service';
   ],
   providers: [
     OnchainService,
-    UniswapV3Adapter,
-    UniswapOnChainService,
-    PoolRankingService,
   ],
 })
 export class OnchainModule {}

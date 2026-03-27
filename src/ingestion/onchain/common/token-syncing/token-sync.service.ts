@@ -27,31 +27,46 @@ export class TokenSyncService {
 
     @InjectRepository(Token)
     private tokenRepo: Repository<Token>,
-  ) {}
+  ) { }
 
   async sync() {
 
-    const symbols = await this.symbolRepo.find();
+    try {
+      console.log("sssssssync")
+      const symbols = await this.symbolRepo.find();
+      // console.log("symbols",symbols[0])
+      const uniqueBases = new Set(symbols.map(s => s.base));
+      // console.log("uniqueBases",uniqueBases)
 
-    const uniqueBases = new Set(symbols.map(s => s.base));
+      for (const base of uniqueBases) {
 
-    for (const base of uniqueBases) {
+        const address = TOKEN_ADDRESS_MAP[base];
+        // console.log("address",address)
+        if (!address) continue; // skip unknown tokens
 
-      const address = TOKEN_ADDRESS_MAP[base];
-      if (!address) continue; // skip unknown tokens
+        const exists = await this.tokenRepo.findOne({
+          where: {
+            address
+          }
+        });
+        // console.log("existss", exists)
 
-      const exists = await this.tokenRepo.findOne({
-        where: { address }
-      });
+        if (exists) continue;
 
-      if (exists) continue;
 
-      await this.tokenRepo.save({
-        chain: "ETH",
-        address,
-        symbol: base === "BTC" ? "WBTC" : base === "ETH" ? "WETH" : base,
-        decimals: DECIMALS_MAP[base] || 18,
-      });
+
+        // console.log("exisssts", exists)
+
+        await this.tokenRepo.save({
+          chain: "ETH",
+          address,
+          symbol: base === "BTC" ? "WBTC" : base === "ETH" ? "WETH" : base,
+          canonicalSymbol: base === "BTC" ? "WBTC" : base === "ETH" ? "WETH" : base,
+          decimals: DECIMALS_MAP[base] || 18,
+        });
+      }
+    } catch (err) {
+      console.log("error in token sync", err)
     }
   }
 }

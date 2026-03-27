@@ -4,7 +4,6 @@ import { DexPool } from "../../common/entities/pool.entityt";
 import { Repository } from "typeorm";
 import { Injectable, Logger } from "@nestjs/common";
 import { ethers } from "ethers";
-import {uniswapv3} from "../../common/configs"
 import { UNISWAP3_FACTORY_ABI } from "../../common/abi/uniswap.abi";
 
 import { Token } from "../../common/entities/token.entity";
@@ -26,19 +25,20 @@ export class UniswapDiscoveryService {
 
     @InjectRepository(DexPool)
     private poolRepo: Repository<DexPool>,
-  ) {}
+  ) { }
 
   async discover() {
 
     this.logger.log("🔍 Discovering Uniswap pools...");
 
     const tokens = await this.tokenRepo.find();
-
+    console.log("tokens", tokens)
     const contract = new ethers.Contract(
-      uniswapv3.UNISWAP_FACTORY,
-        UNISWAP3_FACTORY_ABI,
+      process.env.UNISWAP_FACTORY || "",
+      UNISWAP3_FACTORY_ABI,
       this.provider.getProvider()
     );
+    console.log("contract", contract)
 
     for (const t0 of tokens) {
       for (const t1 of tokens) {
@@ -53,12 +53,15 @@ export class UniswapDiscoveryService {
               t1.address,
               fee
             );
+            console.log("poolAddress", poolAddress)
+
 
             if (!poolAddress || poolAddress === ethers.ZeroAddress) continue;
 
             const exists = await this.poolRepo.findOne({
               where: { poolAddress }
             });
+            console.log("exists", exists)
 
             if (exists) continue;
 
@@ -74,7 +77,7 @@ export class UniswapDiscoveryService {
 
             this.logger.log(`✅ New pool: ${poolAddress}`);
 
-          } catch (err) {}
+          } catch (err) { }
         }
       }
     }

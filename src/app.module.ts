@@ -13,6 +13,7 @@ import { ApiModule } from './api/api.module';
 import { UserModule } from './user/user.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { CronModule } from './cron/cron.module';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { ScheduleModule } from '@nestjs/schedule';
       synchronize: true, // dev only
     }),
     ScheduleModule.forRoot(),
-    ExchangesModule,
+    ExchangesModule, 
     SymbolsModule,
     SyncModule,
     MarketDataModule,
@@ -36,7 +37,8 @@ import { ScheduleModule } from '@nestjs/schedule';
     AuthModule,
     ApiModule,
     UserModule,
-    ApiUsageModule
+    ApiUsageModule,
+    CronModule
     
   ],
   controllers: [AppController],

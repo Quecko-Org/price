@@ -29,9 +29,9 @@ export class DexAutoMapperService {
   async map() {
 
     const pools = await this.poolRepo.find({
-      relations: ["token0", "token1"]
+      // relations: ["token0", "token1"]
     });
-
+// console.log("poolsssss",pools)
     const markets = await this.marketRepo.find();
 
     const marketMap = new Map<string, number>();
@@ -45,12 +45,14 @@ export class DexAutoMapperService {
       const base =
         TOKEN_ALIAS[p.token0.symbol] || p.token0.symbol;
 
+        
       const quote =
         TOKEN_ALIAS[p.token1.symbol] || p.token1.symbol;
 
       const marketId =
         marketMap.get(`${base}-${quote}`) ||
         marketMap.get(`${base}-USD`);
+        // console.log("base",base,quote,marketId)
 
       if (!marketId) continue;
 
@@ -62,6 +64,7 @@ export class DexAutoMapperService {
       });
 
       if (exists) continue;
+      // console.log("exists",exists)
 
       await this.mapRepo.save({
         poolId: p.id,

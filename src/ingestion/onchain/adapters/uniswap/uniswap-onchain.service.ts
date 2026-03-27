@@ -4,7 +4,6 @@ import { EthereumProvider } from "../../providers/ethereum.provider";
 import { Token } from "../../common/entities/token.entity";
 import { DexPool } from "../../common/entities/pool.entityt";
 import { UNISWAP3_FACTORY_ABI, UNISWAP3_POOL_ABI } from "../../common/abi/uniswap.abi";
-import {uniswapv3} from "../../common/configs"
 
 @Injectable()
 export class UniswapOnChainService {
@@ -12,7 +11,7 @@ export class UniswapOnChainService {
 
   async getTopPools(token0: Token, token1: Token, top = 3): Promise<DexPool[]> {
     const provider = this.ethProvider.getProvider();
-    const factory = new ethers.Contract(     uniswapv3.UNISWAP_FACTORY,
+    const factory = new ethers.Contract(     process.env.UNISWAP_FACTORY || "",
         UNISWAP3_FACTORY_ABI, provider);
 
     const allPools: string[] = await factory.getPools(token0.address, token1.address);

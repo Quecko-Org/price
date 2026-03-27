@@ -1,6 +1,6 @@
 
 
-import { Module, forwardRef } from '@nestjs/common';
+import { Global, Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Candle1mEntity } from './entities/candle-1m.entity';
 import { AggregationService } from './aggregation.service';
@@ -9,6 +9,7 @@ import { SymbolsModule } from '@/ingestion/symbols/symbols.module';
 import { SymbolExchangeEntity } from '@/ingestion/symbols/entities/symbol-exchange.entity';
 import { MarketEntity } from '@/market-data/market.entity';
 
+@Global()
 @Module({
     imports: [
       TypeOrmModule.forFeature([

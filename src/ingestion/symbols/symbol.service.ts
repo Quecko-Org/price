@@ -350,7 +350,7 @@ export class SymbolsService {
       }
   
     } catch (err) {
-      console.error('Failed fetching FX rates', err);
+      console.log('Failed fetching FX rates', err);
   
       // 🔥 fallback to DB
       // await this.loadRatesFromDB();
@@ -389,7 +389,7 @@ updateFiatRates(rates);
 
   @Cron('*/1 * * * *')
   async updateFxRates() {
-   await this.refreshRates(); // implement fetch from API
+  //  await this.refreshRates(); // implement fetch from API
   }
  
 

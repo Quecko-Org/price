@@ -22,13 +22,12 @@ export class LiquidityUpdaterService {
     private readonly discovery: UniswapDiscoveryService,
     private readonly autoMapper: DexAutoMapperService,
 
-    
+
 
     @InjectRepository(DexPool)
     private poolRepo: Repository<DexPool>,
-  ) {}
+  ) { }
 
-  @Cron("*/5 * * * *") // every 5 min
   async update() {
 
     const pools = await this.poolRepo.find();
@@ -43,20 +42,22 @@ export class LiquidityUpdaterService {
         );
 
         const liq = await contract.liquidity();
-
+console.log("liq",liq, liq.toString(),   p.poolAddress)
         p.liquidityUsd = liq.toString();
 
-      } catch {}
+      } catch {
+
+        console.log("there  is no pool", p)
+      }
 
     }
 
     await this.poolRepo.save(pools);
   }
 
-  @Cron("0 */10 * * * *") // every 10 min
-async fullSync() {
-  await this.tokenSync.sync();
-  await this.discovery.discover();
-  await this.autoMapper.map();
-}
+  async fullSync() {
+    await this.tokenSync.sync();
+    await this.discovery.discover();
+    await this.autoMapper.map();
+  }
 }
