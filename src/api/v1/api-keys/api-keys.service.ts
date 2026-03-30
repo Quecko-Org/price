@@ -88,7 +88,6 @@ export class ApiKeysService {
   async list(userId: number) {
     return this.apiKeyRepo.find({
       where: { user: { id: userId } },
-      relations: ['plan'], // ✅ include plan info
       order: { createdAt: 'DESC' },
     });
   }
