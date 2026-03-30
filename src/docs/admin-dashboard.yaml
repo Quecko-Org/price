@@ -1,4 +1,264 @@
+openapi: 3.0.0
+info:
+  title: Admin Dashboard API
+  version: 1.0.0
+  description: Admin analytics, user management, and system insights APIs
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Admin Auth
+  - name: Dashboard
+  - name: Charts
+  - name: User Management
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    AdminLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          example: admin@yourapp.com
+        password:
+          type: string
+          example: password123
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        user:
+          type: object
+          properties:
+            id:
+              type: number
+            email:
+              type: string
+            name:
+              type: string
+            role:
+              type: string
+
+    UsersStats:
+      type: object
+      properties:
+        totalUsers:
+          type: number
+        growthPercentage:
+          type: number
+
+    ActiveUsersStats:
+      type: object
+      properties:
+        activeUsers:
+          type: number
+        percentage:
+          type: number
+
+    ApiRequestsStats:
+      type: object
+      properties:
+        todayRequests:
+          type: number
+        percentage:
+          type: number
+
+    RevenueStats:
+      type: object
+      properties:
+        revenue:
+          type: number
+        percentage:
+          type: number
+
+    ChartResponse:
+      type: array
+      items:
+        type: object
+        properties:
+          time:
+            type: string
+            example: "2026-03-01T00:00:00Z"
+          value:
+            type: number
+
+    User:
+      type: object
+      properties:
+        id:
+          type: number
+        email:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED]
+        currentPlan:
+          type: string
+        createdAt:
+          type: string
+
+    UpdateUserStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED]
+
 paths:
+
+  # ===============================
+  # 🔐 ADMIN AUTH
+  # ===============================
+
+  /auth/admin/login:
+    post:
+      tags:
+        - Admin Auth
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLoginRequest'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  # ===============================
+  # 📊 DASHBOARD
+  # ===============================
+
+  /admin/users-stats:
+    get:
+      tags:
+        - Dashboard
+      summary: Get total users and growth percentage
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Users stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersStats'
+
+  /admin/active-users:
+    get:
+      tags:
+        - Dashboard
+      summary: Get active users (last 24h + percentage)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Active users stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActiveUsersStats'
+
+  /admin/api-requests:
+    get:
+      tags:
+        - Dashboard
+      summary: API requests today vs yesterday
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: API usage stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiRequestsStats'
+
+  /admin/revenue:
+    get:
+      tags:
+        - Dashboard
+      summary: Monthly revenue stats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Revenue stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevenueStats'
+
+  # ===============================
+  # 📈 CHARTS
+  # ===============================
+
+  /admin/charts/api:
+    get:
+      tags:
+        - Charts
+      summary: API request chart
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [24h, 7d, 30d]
+          example: 7d
+      responses:
+        '200':
+          description: API chart data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponse'
+
+  /admin/charts/users:
+    get:
+      tags:
+        - Charts
+      summary: Active users chart
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [24h, 7d, 30d]
+          example: 30d
+      responses:
+        '200':
+          description: Users chart data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponse'
+
+  # ===============================
+  # 👤 USER MANAGEMENT
+  # ===============================
+
   /admin/users:
     get:
       summary: "Get all users (paginated)"
@@ -43,43 +303,40 @@ paths:
 
   /admin/users/{id}:
     get:
-      summary: "Get user details + 7-day usage"
       tags:
-        - Admin
+        - User Management
+      summary: Get user details
+      security:
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
           required: true
           schema:
-            type: integer
-      security:
-        - bearerAuth: []
+            type: number
       responses:
         '200':
-          description: User detail with usage
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user:
-                    $ref: '#/components/schemas/User'
-                  usage:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                      monthly:
-                        type: integer
-                      today:
-                        type: integer
-                  last7Days:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        day:
-                          type: string
-                          format: date
-                        usage:
-                          type: integer
+          description: User detail
+
+  /admin/users/{id}/status:
+    patch:
+      tags:
+        - User Management
+      summary: Update user status (activate/suspend)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserStatus'
+      responses:
+        '200':
+          description: Status updated
