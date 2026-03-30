@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
 import { MarketsQueryDto } from './dto/markets-query.dto';
 import { MarketDataService } from '@/market-data/market-data.service';
 import { MarketsService } from './markets.service';
@@ -19,7 +19,7 @@ export class MarketsController {
 
     const market = await this.marketDataService.findBySymbol(query.symbol);
     if (!market) {
-      return { s: 'error', message: 'symbol not found' };
+      throw new NotFoundException('Symbol not found'); // returns 404
     }
 
     const candles = await this.marketsService.getMarkets(
@@ -42,7 +42,7 @@ export class MarketsController {
 
     const market = await this.marketDataService.findBySymbol(symbol);
     if (!market) {
-      return { s: 'error', message: 'symbol not found' };
+      throw new NotFoundException('Symbol not found'); // returns 404
     }
     const {time,price} = await this.marketsService.getLatestPrice(market.id,);
 
@@ -59,7 +59,7 @@ export class MarketsController {
 
     const market = await this.marketDataService.findBySymbol(symbol);
     if (!market) {
-      return { s: 'error', message: 'symbol not found' };
+      throw new NotFoundException('Symbol not found'); // returns 404
     }
     const price = await this.marketsService.get24hStats(market.id
  );

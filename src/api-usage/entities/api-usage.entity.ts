@@ -36,4 +36,8 @@ export class ApiUsageEntity {
 
   @CreateDateColumn()
   createdAt: Date;
+
+
+  @Column({ default: true })
+success: boolean;
 }

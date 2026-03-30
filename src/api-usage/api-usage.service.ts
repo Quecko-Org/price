@@ -26,7 +26,7 @@ export class ApiUsageService {
           .select([
             `COUNT(*) FILTER (WHERE u."createdAt" >= :startOfMonth) AS "monthlyRequests"`,
             `COUNT(*) FILTER (WHERE u."createdAt" >= :last24h) AS "last24hRequests"`,
-            `COUNT(*) FILTER (WHERE u."statusCode" >= 200 AND u."statusCode" < 300) AS "successRequests"`,
+            `COUNT(*) FILTER (WHERE u.success = true) AS "successRequests"`,
             `COUNT(*) AS "totalRequests"`,
             `AVG(u."responseTime") AS "avgResponseTime"`
           ])
@@ -116,7 +116,7 @@ export class ApiUsageService {
           .select([
             `COUNT(*) FILTER (WHERE u."createdAt" >= :startOfMonth) AS "monthlyRequests"`,
             `COUNT(*) FILTER (WHERE u."createdAt" >= :last24h) AS "last24hRequests"`,
-            `COUNT(*) FILTER (WHERE u."statusCode" >= 200 AND u."statusCode" < 300) AS "successRequests"`,
+            `COUNT(*) FILTER (WHERE u.success = true) AS "successRequests"`,
             `COUNT(*) FILTER (WHERE u."statusCode" >= 400 AND u."statusCode" < 500) AS "clientErrors"`,
             `COUNT(*) FILTER (WHERE u."statusCode" >= 500) AS "serverErrors"`,
             `COUNT(*) AS "totalRequests"`,

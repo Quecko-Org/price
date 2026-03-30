@@ -28,7 +28,6 @@ export class ApiUsageMiddleware implements NestMiddleware {
         const userId = req['userId'];
 
         if (!apiKeyId) return;
-
         await Promise.all([
           this.usageRepo.save({
             apiKeyId,
@@ -37,6 +36,7 @@ export class ApiUsageMiddleware implements NestMiddleware {
             method: req.method,
             statusCode: res.statusCode,
             responseTime,
+            success: res.statusCode >= 200 && res.statusCode < 300 && !res.locals.failed,
           }),
 
           // Increment per-key monthlyCalls
