@@ -14,3 +14,14 @@ export enum PaymentStatus {
     2: UserPlan.GROWTH, // 
     3: UserPlan.PRO, //
   }
+
+
+  export enum UserRole {
+    USER = 'USER',
+    ADMIN = 'ADMIN',
+  }
+  
+  export enum UserStatus {
+    ACTIVE = 'ACTIVE',
+    SUSPENDED = 'SUSPENDED',
+  }

@@ -12,7 +12,7 @@ import {
 
 import { ApiKeyEntity } from '@/api/v1/api-keys/entities/api-key.entity';
 import { PaymentEntity } from '@/api/v1/payments/entities/payment.entity';
-import { UserPlan } from '@/common/enums/payment.enum';
+import { UserPlan, UserRole, UserStatus } from '@/common/enums/payment.enum';
 import { ApiUsageEntity } from '@/api-usage/entities/api-usage.entity';
 import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
 
@@ -59,6 +59,27 @@ export class UserEntity {
   // 🔥 Track when usage was last reset (important for accuracy)
   @Column({ type: 'timestamptz', nullable: true })
   usageResetAt: Date | null;
+
+
+// user role//
+@Column({
+  type: 'enum',
+  enum: UserRole,
+  default: UserRole.USER,
+})
+role: UserRole;
+
+@Column({
+  type: 'enum',
+  enum: UserStatus,
+  default: UserStatus.ACTIVE,
+})
+status: UserStatus;
+
+
+
+
+
 
   // -------------------------
   // Preferences

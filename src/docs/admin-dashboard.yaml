@@ -1,0 +1,85 @@
+paths:
+  /admin/users:
+    get:
+      summary: "Get all users (paginated)"
+      tags:
+        - Admin
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  meta:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      lastPage:
+                        type: integer
+
+  /admin/users/{id}:
+    get:
+      summary: "Get user details + 7-day usage"
+      tags:
+        - Admin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User detail with usage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  usage:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      monthly:
+                        type: integer
+                      today:
+                        type: integer
+                  last7Days:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        day:
+                          type: string
+                          format: date
+                        usage:
+                          type: integer

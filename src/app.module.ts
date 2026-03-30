@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { ApiModule } from './api/api.module';
 import { UserModule } from './user/user.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -34,7 +35,8 @@ import { ApiUsageModule } from './api-usage/api-usage.module';
     AuthModule,
     ApiModule,
     UserModule,
-    ApiUsageModule
+    ApiUsageModule,
+    AdminModule
     
   ],
   controllers: [AppController],

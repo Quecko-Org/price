@@ -37,6 +37,10 @@ export class ApiKeyMiddleware implements NestMiddleware {
     if (!key) throw new UnauthorizedException('Invalid API key');
 
     const user = key.user as UserEntity;
+    
+    if (user.status === 'SUSPENDED') {
+      throw new ForbiddenException('Account suspended');
+    }
 
     // 🔹 Check plan expiry
     if (user.planExpiresAt && new Date() > user.planExpiresAt) {

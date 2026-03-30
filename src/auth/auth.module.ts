@@ -10,6 +10,7 @@ import { MailService } from '@/common/mail/mail.service';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
 import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
+import { UserModule } from '@/user/user.module';
 
 @Module({
   imports: [
@@ -19,10 +20,10 @@ import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
       secret: process.env.JWT_SECRET || 'supersecretkey',
       signOptions: { expiresIn: '1d' },
     }),
-    
+    UserModule
   ],
   controllers: [AuthController],
-  providers: [AuthService,MailService,JwtStrategy],
+  providers: [AuthService,MailService,JwtStrategy,],
   exports: [JwtModule],
 
 })

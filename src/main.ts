@@ -26,12 +26,35 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Load YAML
-  const swaggerDocument = YAML.load('src/docs/openapi.yaml');
 
-  SwaggerModule.setup('api-docs', app, swaggerDocument);
-
-
+  const publicDoc: any = YAML.load('src/docs/openapi.yaml') || {};
+  const adminDoc: any = YAML.load('src/docs/admin-dashboard.yaml') || {};
+// Merge paths and components
+const mergedDoc: any = {
+  openapi: publicDoc.openapi || '3.0.0',
+  info: publicDoc.info || { title: 'API', version: '1.0.0' },
+  servers: publicDoc.servers || [],
+  paths: { 
+    ...publicDoc.paths, 
+    ...adminDoc.paths 
+  },
+  components: {
+    schemas: { 
+      ...publicDoc.components?.schemas, 
+      ...adminDoc.components?.schemas 
+    },
+    securitySchemes: {
+      ...publicDoc.components?.securitySchemes,
+      ...adminDoc.components?.securitySchemes,
+    },
+    responses: {
+      ...publicDoc.components?.responses,
+      ...adminDoc.components?.responses,
+    },
+  },
+};
+SwaggerModule.setup('api-docs', app, mergedDoc);
+  
 
   await app.listen(process.env.PORT ?? 3000);
 

@@ -18,6 +18,11 @@ export class AuthController {
   }
 
 
+  @Post('admin/login')
+  adminLogin(@Body() dto: LoginDto) {
+    return this.authService.adminLogin(dto);
+  }
+
   @Post('forgot-password')
   requestPasswordReset(@Body() dto: ForgotPasswordDto) {
     return this.authService.requestPasswordReset(dto.email);

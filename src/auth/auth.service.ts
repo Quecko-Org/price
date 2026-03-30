@@ -54,12 +54,45 @@ export class AuthService {
   async login(dto: LoginDto) {
     const user = await this.userRepo.findOne({ where: { email: dto.email } });
     if (!user) throw new UnauthorizedException('Invalid credentials');
+    if (user.status === 'SUSPENDED') {
+      throw new UnauthorizedException('Account suspended');
+    }
 
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
 
     return this.generateToken(user);
   }
+
+
+  async adminLogin(dto: LoginDto) {
+    const user = await this.userRepo.findOne({
+      where: { email: dto.email },
+    });
+  
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+  
+    // 🔥 Check ADMIN role
+    if (user.role !== 'ADMIN') {
+      throw new UnauthorizedException('Not an admin');
+    }
+  
+    // 🔥 Check suspended
+    if (user.status === 'SUSPENDED') {
+      throw new UnauthorizedException('Account suspended');
+    }
+  
+    const valid = await bcrypt.compare(dto.password, user.password);
+    if (!valid) throw new UnauthorizedException('Invalid credentials');
+  
+    return this.generateToken(user);
+  }
+
+
+
+
+
+
 
   generateToken(user: UserEntity) {
     return {
@@ -69,6 +102,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         plan: user.currentPlan,
+        role: user.role,  
       },
     };
   }
