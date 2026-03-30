@@ -11,12 +11,16 @@ import { randomBytes } from 'crypto';
 import { addMinutes } from 'date-fns';
 import { MailService } from '@/common/mail/mail.service';
 import { UserPlan } from '@/common/enums/payment.enum';
+import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+
+    @InjectRepository(PlanEntity)
+    private readonly planRepo: Repository<PlanEntity>,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
 
@@ -26,6 +30,12 @@ export class AuthService {
     const exists = await this.userRepo.findOne({ where: { email: dto.email } });
     if (exists) throw new BadRequestException('Email already registered');
 
+    const plan = await this.planRepo.findOne({
+      where: { name: UserPlan.FREE },
+    });
+    
+    if (!plan) throw new Error('Default plan not found');
+    
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const user = this.userRepo.create({ 
       email: dto.email,
@@ -33,6 +43,7 @@ export class AuthService {
       password: hashedPassword,
       newsletter: dto.newsletter ?? false,
       agreeToTerms: dto.agreeToTerms,
+      plan
     
   });
     await this.userRepo.save(user);

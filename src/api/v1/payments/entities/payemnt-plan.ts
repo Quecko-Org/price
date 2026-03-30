@@ -7,7 +7,7 @@ export class PlanEntity {
   id: number;
 
 
-  @Column({ type: 'enum', enum: UserPlan })
+  @Column({ type: 'enum', enum: UserPlan,default: UserPlan.FREE })
   name: UserPlan;
 
 

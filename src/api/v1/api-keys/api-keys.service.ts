@@ -63,8 +63,8 @@ export class ApiKeysService {
 
     if (existingKeysCount >= plan.maxApiKeys) {
       throw new BadRequestException(
-        `API key limit reached for ${plan.name} plan`,
-      );
+        `API key limit reached (${plan.maxApiKeys}). Delete old keys to create new ones.`,
+        );
     }
 
     // 4️⃣ Generate key
@@ -75,8 +75,8 @@ export class ApiKeysService {
       user: fullUser,
       name: dto.name,
       key,
-      plan,
-      monthlyCalls: 0,
+      // plan,
+      // monthlyCalls: 0,
     });
 
     return this.apiKeyRepo.save(apiKey);

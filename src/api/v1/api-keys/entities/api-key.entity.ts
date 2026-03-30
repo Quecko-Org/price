@@ -23,9 +23,6 @@ export class ApiKeyEntity {
   @Column({ unique: true })
   key: string;
 
-  @ManyToOne(() => PlanEntity)
-  plan: PlanEntity; // each key inherits the plan rules
-
   @CreateDateColumn()
   createdAt: Date;
 

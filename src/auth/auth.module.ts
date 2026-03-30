@@ -9,10 +9,11 @@ import { UserEntity } from '@/user/entities/user.entity';
 import { MailService } from '@/common/mail/mail.service';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
+import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity]),
+    TypeOrmModule.forFeature([UserEntity,PlanEntity]),
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'supersecretkey',

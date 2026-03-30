@@ -5,12 +5,16 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 
 import { ApiKeyEntity } from '@/api/v1/api-keys/entities/api-key.entity';
 import { PaymentEntity } from '@/api/v1/payments/entities/payment.entity';
 import { UserPlan } from '@/common/enums/payment.enum';
 import { ApiUsageEntity } from '@/api-usage/entities/api-usage.entity';
+import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
 
 @Entity('users')
 export class UserEntity {
@@ -21,6 +25,7 @@ export class UserEntity {
   // -------------------------
   // Basic Info
   // -------------------------
+  @Index() // 🔥 faster lookup
   @Column({ unique: true })
   email: string;
 
@@ -43,9 +48,17 @@ export class UserEntity {
   })
   currentPlan: UserPlan;
 
-  // Optional: when plan expires (useful for subscriptions)
+  // Plan expiry (subscription-based)
   @Column({ type: 'timestamptz', nullable: true })
   planExpiresAt: Date | null;
+
+  // 🔥 Shared usage across ALL API keys
+  @Column({ type: 'int', default: 0 })
+  monthlyUsage: number;
+
+  // 🔥 Track when usage was last reset (important for accuracy)
+  @Column({ type: 'timestamptz', nullable: true })
+  usageResetAt: Date | null;
 
   // -------------------------
   // Preferences
@@ -76,6 +89,10 @@ export class UserEntity {
 
   @OneToMany(() => ApiUsageEntity, usage => usage.user)
   apiUsage: ApiUsageEntity[];
+
+  @ManyToOne(() => PlanEntity)
+  @JoinColumn({ name: 'planId' })
+  plan: PlanEntity;
 
   // -------------------------
   // Timestamps

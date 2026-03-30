@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 
 import { PaymentEntity } from './entities/payment.entity';
 import { UserEntity } from '@/user/entities/user.entity';
-import { PaymentStatus } from '@/common/enums/payment.enum';
+import { PaymentStatus, UserPlan } from '@/common/enums/payment.enum';
 import { MailService } from '@/common/mail/mail.service';
 import { PlanEntity } from './entities/payemnt-plan';
 
@@ -26,16 +26,50 @@ export class PaymentsService {
     private mailService: MailService,
 
   ) { }
+
+  async applyUserPlanUpgrade(
+    userId: number,
+    planName: UserPlan,
+    durationDays = 30,
+  ) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['plan'],
+    });
+  
+    if (!user) throw new Error('User not found');
+  
+    const plan = await this.planRepo.findOne({
+      where: { name: planName },
+    });
+  
+    if (!plan) throw new Error('Plan not found');
+  
+    const now = new Date();
+    const expiresAt = new Date(
+      now.getTime() + durationDays * 24 * 60 * 60 * 1000,
+    );
+  
+    user.currentPlan = planName; // enum
+    user.plan = plan;            // 🔥 RELATION FIX
+    user.planExpiresAt = expiresAt;
+  
+    // 🔥 reset usage on upgrade
+    user.monthlyUsage = 0;
+    user.usageResetAt = now;
+  
+    await this.userRepo.save(user);
+  
+    return user;
+  }
   async storePayment(user, payment, dto) {
-    console.log("ggg", user, payment)
 
     const existingUser = await this.userRepo.findOne({
       where: { id: user.id },
     });
-
+  
     if (!existingUser) throw new Error('User not found');
-
-    console.log("ggg", user, payment)
+  
     const entity = this.paymentRepo.create({
       user: { id: existingUser.id },
       transactionId: payment.transactionId,
@@ -45,14 +79,17 @@ export class PaymentsService {
       walletAddress: payment.fromWallet,
       status: PaymentStatus.CONFIRMED,
     });
-
+  
     const savedPayment = await this.paymentRepo.save(entity);
+  console.log("savedpayment",savedPayment)
     if (savedPayment.status === PaymentStatus.CONFIRMED) {
-      existingUser.currentPlan = savedPayment.plan;
-      await this.userRepo.save(existingUser);
+      await this.applyUserPlanUpgrade(
+        existingUser.id,
+        savedPayment.plan,
+        30, // duration
+      );
     }
-
-
+  
     await this.mailService.sendMail({
       to: user.email,
       templateId: process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
@@ -66,9 +103,9 @@ export class PaymentsService {
         date: new Date().toLocaleDateString(),
       },
     });
+  
     return entity;
   }
-
 
 
   async findAll() {
@@ -79,18 +116,18 @@ export class PaymentsService {
   }
 
   async verifyUpgradePayment(user, payment, dto) {
-    console.log("user", user)
 
     const existingUser = await this.userRepo.findOne({
       where: { id: user.id },
+      relations: ['plan'],
     });
-
+  
     if (!existingUser) throw new Error('User not found');
-
-
-    if (existingUser && existingUser.currentPlan == dto.plan) {
+  
+    if (existingUser.currentPlan === dto.plan) {
       throw new BadRequestException('You already have this plan');
     }
+  
     const entity = this.paymentRepo.create({
       user: { id: existingUser.id },
       transactionId: payment.transactionId,
@@ -100,16 +137,17 @@ export class PaymentsService {
       walletAddress: payment.fromWallet,
       status: PaymentStatus.CONFIRMED,
     });
-
-
-
+  
     const savedPayment = await this.paymentRepo.save(entity);
+  
     if (savedPayment.status === PaymentStatus.CONFIRMED) {
-      existingUser.currentPlan = savedPayment.plan;
-      await this.userRepo.save(existingUser);
+      await this.applyUserPlanUpgrade(
+        existingUser.id,
+        savedPayment.plan,
+        30,
+      );
     }
-
-
+  
     await this.mailService.sendMail({
       to: user.email,
       templateId: process.env.SENDGRID_PAYMENT_CONFIRMATION || "",
@@ -123,6 +161,7 @@ export class PaymentsService {
         date: new Date().toLocaleDateString(),
       },
     });
+  
     return entity;
   }
 
