@@ -468,7 +468,7 @@ paths:
         '200':
           description: Status updated
 
-  /admin/plans:
+  /admin/plan:
     post:
       summary: Create a new plan
       tags: [Admin Plans]
@@ -499,7 +499,7 @@ paths:
                 items:
                   $ref: '#/components/schemas/Plan'
 
-  /admin/plans/{id}:
+  /admin/plan/{id}:
     get:
       summary: Get plan by ID
       tags: [Admin Plans]
@@ -540,7 +540,7 @@ paths:
         '200':
           description: Plan updated successfully
 
-  /admin/plans/{id}/disable:
+  /admin/plan/{id}/disable:
     patch:
       summary: Disable a plan
       tags: [Admin Plans]
@@ -556,7 +556,7 @@ paths:
         '200':
           description: Plan disabled successfully
 
-  /admin/plans/{id}/enable:
+  /admin/plan/{id}/enable:
     patch:
       summary: Enable a plan
       tags: [Admin Plans]

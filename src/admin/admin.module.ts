@@ -6,10 +6,11 @@ import { UserEntity } from '@/user/entities/user.entity';
 import { ApiUsageEntity } from '@/api-usage/entities/api-usage.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
+import { ApiKeyEntity } from '@/api/v1/api-keys/entities/api-key.entity';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ UserEntity
-    ,ApiUsageEntity,PaymentEntity ,PlanEntity ])],
+    ,ApiUsageEntity,PaymentEntity ,PlanEntity ,ApiKeyEntity])],
 
 
   controllers: [AdminController],

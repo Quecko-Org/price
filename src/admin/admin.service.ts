@@ -10,6 +10,7 @@ import { TokenUsageDto, TokenUsageFilter } from './dto/tokenusage.dto';
 import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
 import { CreatePlanDto, UpdatePlanDto } from './dto/payment.dto';
 import { PaginationDto } from './dto/pagination.dto';
+import { ApiKeyEntity } from '@/api/v1/api-keys/entities/api-key.entity';
 
 @Injectable()
 export class AdminService {
@@ -27,7 +28,10 @@ export class AdminService {
 
     @InjectRepository(PlanEntity)
     private readonly planRepo: Repository<PlanEntity>,
+    
 
+    @InjectRepository(ApiKeyEntity)
+    private readonly apiKeyRepo: Repository<ApiKeyEntity>,
 
   ) { }
 
@@ -250,12 +254,30 @@ export class AdminService {
     SELECT
       COUNT(*) AS total,
       COUNT(*) FILTER (WHERE "createdAt" >= NOW() - INTERVAL '30 days') AS monthly,
-      COUNT(*) FILTER (WHERE DATE("createdAt") = CURRENT_DATE) AS today
+      COUNT(*) FILTER (WHERE DATE("createdAt") = CURRENT_DATE) AS today,
+      COUNT(*) FILTER (WHERE DATE("createdAt") = CURRENT_DATE - INTERVAL '1 day') AS yesterday
+
     FROM api_usage
     WHERE "userId" = $1
     `,
       [userId],
     );
+    const todayUsage = Number(usage[0]?.today || 0);
+    const yesterdayUsage = Number(usage[0]?.yesterday || 0);
+    
+    const todayUsagePercentChange =
+      yesterdayUsage === 0
+        ? todayUsage > 0
+          ? 100
+          : 0
+        : ((todayUsage - yesterdayUsage) / yesterdayUsage) * 100;  
+          const lastActiveResult = await this.apiKeyRepo
+  .createQueryBuilder('key')
+  .select('MAX(key."lastCallAt")', 'lastActive')
+  .where('key."userId" = :userId', { userId })
+  .getRawOne();
+
+const lastActive = lastActiveResult?.lastActive || null;
 
     // 7-day usage history (for chart)
     const last7Days = await this.usageRepo.query(
@@ -275,7 +297,9 @@ export class AdminService {
     return {
       user,
       usage: usage[0],
+      todayUsagePercentChange,
       last7Days,
+      lastActive
     };
   }
 
