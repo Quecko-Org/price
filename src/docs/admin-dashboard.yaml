@@ -571,3 +571,15 @@ paths:
       responses:
         '200':
           description: Plan enabled successfully
+  /admin/payment/history:
+    patch:
+      summary: Get all billing history
+      tags: [Admin Plans]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: billing history successfully
+
+
+

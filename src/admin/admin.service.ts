@@ -351,6 +351,17 @@ export class AdminService {
     return this.planRepo.save(plan);
   }
 
+
+  async getPayments() {
+    try {
+      return this.paymentRepo.find({
+        order: { createdAt: 'DESC' },
+      });
+    } catch (error) {
+      console.log(error)
+    }
+  }
+
   async disable(planId: number) {
     const plan = await this.planRepo.findOne({ where: { id: planId } });
     if (!plan) throw new NotFoundException('Plan not found');

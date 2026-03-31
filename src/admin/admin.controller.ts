@@ -89,6 +89,11 @@ import { CreatePlanDto, UpdatePlanDto } from './dto/payment.dto';
     create(@Body() dto: CreatePlanDto) {
       return this.adminService.create(dto);
     }
+
+    @Get('payment/history')
+    history() {
+      return this.adminService.getPayments();
+    }
   
     @Patch('plan/:id')
     update(@Param('id') id: number, @Body() dto: UpdatePlanDto) {
