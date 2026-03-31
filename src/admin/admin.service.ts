@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -6,11 +6,14 @@ import { UserEntity } from '@/user/entities/user.entity';
 import { ApiUsageEntity } from '@/api-usage/entities/api-usage.entity';
 import { PaymentEntity } from '@/api/v1/payments/entities/payment.entity';
 import { UserStatus } from './dto/admin.dto';
+import { TokenUsageDto, TokenUsageFilter } from './dto/tokenusage.dto';
+import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
+import { CreatePlanDto, UpdatePlanDto } from './dto/payment.dto';
 
 @Injectable()
 export class AdminService {
 
-  constructor( 
+  constructor(
     @InjectRepository(UserEntity)
     private userRepo: Repository<UserEntity>,
 
@@ -19,7 +22,13 @@ export class AdminService {
 
     @InjectRepository(PaymentEntity)
     private paymentRepo: Repository<PaymentEntity>,
-  ) {}
+
+
+    @InjectRepository(PlanEntity)
+    private readonly planRepo: Repository<PlanEntity>,
+
+
+  ) { }
 
   // ===============================
   // 📊 USERS STATS
@@ -138,7 +147,7 @@ export class AdminService {
     const interval = range === '24h' ? 'hour' : 'day';
     const duration =
       range === '24h' ? '24 hours' :
-      range === '7d' ? '7 days' : '30 days';
+        range === '7d' ? '7 days' : '30 days';
 
     return this.usageRepo.query(`
       SELECT
@@ -157,7 +166,7 @@ export class AdminService {
   async getActiveUsersChart(range: '24h' | '7d' | '30d' = '7d') {
     const duration =
       range === '24h' ? '24 hours' :
-      range === '7d' ? '7 days' : '30 days';
+        range === '7d' ? '7 days' : '30 days';
 
     return this.usageRepo.query(`
       SELECT
@@ -179,37 +188,37 @@ export class AdminService {
 
 
 
-async getAllUsers(page = 1, limit = 20) {
-  const [users, total] = await this.userRepo.findAndCount({
-    relations: ['plan'],
-    order: { createdAt: 'DESC' },
-    skip: (page - 1) * limit,
-    take: limit,
-  });
+  async getAllUsers(page = 1, limit = 20) {
+    const [users, total] = await this.userRepo.findAndCount({
+      relations: ['plan'],
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
 
-  return {
-    data: users,
-    meta: {
-      total,
-      page,
-      lastPage: Math.ceil(total / limit),
-    },
-  };
-}
+    return {
+      data: users,
+      meta: {
+        total,
+        page,
+        lastPage: Math.ceil(total / limit),
+      },
+    };
+  }
 
 
-async getUserDetails(userId: number) {
-  // User basic info + plan + payments
-  const user = await this.userRepo.findOne({
-    where: { id: userId },
-    relations: ['plan', 'payments'],
-  });
+  async getUserDetails(userId: number) {
+    // User basic info + plan + payments
+    const user = await this.userRepo.findOne({
+      where: { id: userId },
+      relations: ['plan', 'payments'],
+    });
 
-  if (!user) return null;
+    if (!user) return null;
 
-  // Total usage, last 30 days, today
-  const usage = await this.usageRepo.query(
-    `
+    // Total usage, last 30 days, today
+    const usage = await this.usageRepo.query(
+      `
     SELECT
       COUNT(*) AS total,
       COUNT(*) FILTER (WHERE "createdAt" >= NOW() - INTERVAL '30 days') AS monthly,
@@ -217,12 +226,12 @@ async getUserDetails(userId: number) {
     FROM api_usage
     WHERE "userId" = $1
     `,
-    [userId],
-  );
+      [userId],
+    );
 
-  // 7-day usage history (for chart)
-  const last7Days = await this.usageRepo.query(
-    `
+    // 7-day usage history (for chart)
+    const last7Days = await this.usageRepo.query(
+      `
     SELECT
       DATE("createdAt") AS day,
       COUNT(*) AS usage
@@ -232,15 +241,15 @@ async getUserDetails(userId: number) {
     GROUP BY day
     ORDER BY day ASC
     `,
-    [userId],
-  );
+      [userId],
+    );
 
-  return {
-    user,
-    usage: usage[0],
-    last7Days,
-  };
-}
+    return {
+      user,
+      usage: usage[0],
+      last7Days,
+    };
+  }
 
 
 
@@ -255,5 +264,117 @@ async getUserDetails(userId: number) {
   async updateUserStatus(userId: number, status: UserStatus) {
     await this.userRepo.update(userId, { status });
     return { message: 'User status updated' };
+  }
+
+
+
+  async getTokenUsage(dto: TokenUsageDto) {
+    let startDate: Date;
+    const now = new Date();
+
+    switch (dto.filter) {
+      case TokenUsageFilter.LAST_24_HOURS:
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case TokenUsageFilter.LAST_7_DAYS:
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case TokenUsageFilter.LAST_30_DAYS:
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    }
+
+    // Aggregate by API key and symbol
+    const usage = await this.usageRepo
+      .createQueryBuilder('u')
+      .select([
+
+        'u."apiKeyId" AS apikeyid',   // lowercase
+        'u.endpoint',
+        'COUNT(*) AS requestcount',
+      ])
+      .where('u."createdAt" >= :startDate', { startDate })
+      .groupBy('u."apiKeyId"')
+      .addGroupBy('u.endpoint')
+      .orderBy("requestCount", 'DESC')
+      .getRawMany();
+
+    // Parse symbol from endpoint query/path
+    const result = usage.map(u => {
+      let symbol: any = null;
+      try {
+        if (u.endpoint.includes('/api/v1/markets?')) {
+          const queryStr = u.endpoint.split('?')[1];
+          const params = new URLSearchParams(queryStr);
+
+          symbol = params.get('symbol');
+
+        } else if (u.endpoint.includes('/api/v1/markets/') && u.endpoint.includes('/price')) {
+          symbol = u.endpoint.split('/')[3]; // /api/v1/markets/BTC/price
+        } else if (u.endpoint.includes('/api/v1/markets/') && u.endpoint.includes('/stats')) {
+          symbol = u.endpoint.split('/')[3]; // /api/v1/markets/BTC/stats
+        }
+      } catch (err) {
+        symbol = null;
+      }
+
+      return {
+        apiKeyId: u.apikeyid,          // lowercase
+        endpoint: u.endpoint,
+        symbol,
+        requestCount: Number(u.requestcount), // lowercase
+      };
+    });
+
+    return result;
+  }
+
+
+
+
+
+
+
+
+
+  async create(dto: CreatePlanDto) {
+    const plan = this.planRepo.create(dto);
+    return this.planRepo.save(plan);
+  }
+
+  async update(planId: number, dto: UpdatePlanDto) {
+    const plan = await this.planRepo.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException('Plan not found');
+
+    Object.assign(plan, dto);
+    return this.planRepo.save(plan);
+  }
+
+  async disable(planId: number) {
+    const plan = await this.planRepo.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException('Plan not found');
+
+    plan['disabled'] = true;
+    return this.planRepo.save(plan);
+  }
+
+  async enable(planId: number) {
+    const plan = await this.planRepo.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException('Plan not found');
+
+    plan['disabled'] = false;
+    return this.planRepo.save(plan);
+  }
+
+  async getAll() {
+    return this.planRepo.find({ order: { planIndex: 'ASC' } });
+  }
+
+  async getById(planId: number) {
+    const plan = await this.planRepo.findOne({ where: { id: planId } });
+    if (!plan) throw new NotFoundException('Plan not found');
+    return plan;
   }
 }

@@ -92,7 +92,109 @@ components:
             example: "2026-03-01T00:00:00Z"
           value:
             type: number
+           
+    Plan:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          enum: [FREE, BASIC, GROWTH, PRO]
+        planIndex:
+          type: integer
+        priceUsd:
+          type: number
+        maxApiKeys:
+          type: integer
+        maxEndpoints:
+          type: integer
+        monthlyApiCalls:
+          type: integer
+        realtimeData:
+          type: boolean
+        historicalData:
+          type: boolean
+        marketOverview:
+          type: boolean
+        onchainMetrics:
+          type: boolean
+        chartData:
+          type: boolean
+        supportLevel:
+          type: string
+          enum: [community, email, priority]
+        disabled:
+          type: boolean
 
+    CreatePlanDto:
+      type: object
+      required:
+        - name
+        - planIndex
+        - priceUsd
+        - maxApiKeys
+        - maxEndpoints
+        - monthlyApiCalls
+      properties:
+        name:
+          type: string
+          enum: [FREE, BASIC, GROWTH, PRO]
+        planIndex:
+          type: integer
+        priceUsd:
+          type: number
+        maxApiKeys:
+          type: integer
+        maxEndpoints:
+          type: integer
+        monthlyApiCalls:
+          type: integer
+        realtimeData:
+          type: boolean
+        historicalData:
+          type: boolean
+        marketOverview:
+          type: boolean
+        onchainMetrics:
+          type: boolean
+        chartData:
+          type: boolean
+        supportLevel:
+          type: string
+          enum: [community, email, priority]
+
+    UpdatePlanDto:
+      type: object
+      properties:
+        name:
+          type: string
+          enum: [FREE, BASIC, GROWTH, PRO]
+        planIndex:
+          type: integer
+        priceUsd:
+          type: number
+        maxApiKeys:
+          type: integer
+        maxEndpoints:
+          type: integer
+        monthlyApiCalls:
+          type: integer
+        realtimeData:
+          type: boolean
+        historicalData:
+          type: boolean
+        marketOverview:
+          type: boolean
+        onchainMetrics:
+          type: boolean
+        chartData:
+          type: boolean
+        supportLevel:
+          type: string
+          enum: [community, email, priority]
+        disabled:
+          type: boolean
     User:
       type: object
       properties:
@@ -340,3 +442,107 @@ paths:
       responses:
         '200':
           description: Status updated
+
+  /admin/plans:
+    post:
+      summary: Create a new plan
+      tags: [Admin Plans]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanDto'
+      responses:
+        '201':
+          description: Plan created successfully
+
+    get:
+      summary: Get all plans
+      tags: [Admin Plans]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of all plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
+
+  /admin/plans/{id}:
+    get:
+      summary: Get plan by ID
+      tags: [Admin Plans]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Plan details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+
+    patch:
+      summary: Update a plan
+      tags: [Admin Plans]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlanDto'
+      responses:
+        '200':
+          description: Plan updated successfully
+
+  /admin/plans/{id}/disable:
+    patch:
+      summary: Disable a plan
+      tags: [Admin Plans]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Plan disabled successfully
+
+  /admin/plans/{id}/enable:
+    patch:
+      summary: Enable a plan
+      tags: [Admin Plans]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Plan enabled successfully
