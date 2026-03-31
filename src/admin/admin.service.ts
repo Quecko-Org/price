@@ -297,9 +297,10 @@ export class AdminService {
 
 
   async getTokenUsage(dto: TokenUsageDto) {
+
     let startDate: Date;
     const now = new Date();
-
+  
     switch (dto.filter) {
       case TokenUsageFilter.LAST_24_HOURS:
         startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -313,54 +314,24 @@ export class AdminService {
       default:
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     }
-
-    // Aggregate by API key and symbol
+  
+    // ✅ GROUP BY DATE (for chart)
     const usage = await this.usageRepo
       .createQueryBuilder('u')
       .select([
-
-        'u."apiKeyId" AS apikeyid',   // lowercase
-        'u.endpoint',
-        'COUNT(*) AS requestcount',
+        `DATE(u."createdAt") AS date`,
+        `COUNT(*) AS total`,
       ])
       .where('u."createdAt" >= :startDate', { startDate })
-      .groupBy('u."apiKeyId"')
-      .addGroupBy('u.endpoint')
-      .orderBy("requestCount", 'DESC')
+      .groupBy(`DATE(u."createdAt")`)
+      .orderBy(`DATE(u."createdAt")`, 'ASC')
       .getRawMany();
-
-    // Parse symbol from endpoint query/path
-    const result = usage.map(u => {
-      let symbol: any = null;
-      try {
-        if (u.endpoint.includes('/api/v1/markets?')) {
-          const queryStr = u.endpoint.split('?')[1];
-          const params = new URLSearchParams(queryStr);
-
-          symbol = params.get('symbol');
-
-        } else if (u.endpoint.includes('/api/v1/markets/') && u.endpoint.includes('/price')) {
-          symbol = u.endpoint.split('/')[3]; // /api/v1/markets/BTC/price
-        } else if (u.endpoint.includes('/api/v1/markets/') && u.endpoint.includes('/stats')) {
-          symbol = u.endpoint.split('/')[3]; // /api/v1/markets/BTC/stats
-        }
-      } catch (err) {
-        symbol = null;
-      }
-
-      return {
-        apiKeyId: u.apikeyid,          // lowercase
-        endpoint: u.endpoint,
-        symbol,
-        requestCount: Number(u.requestcount), // lowercase
-      };
-    });
-
-    return result;
+  console.log("usageee",usage)
+    return usage.map(u => ({
+      date: u.date,
+      total: Number(u.total),
+    }));
   }
-
-
-
 
 
 

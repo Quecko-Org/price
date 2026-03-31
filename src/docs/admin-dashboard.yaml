@@ -335,6 +335,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ChartResponse'
 
+
+
+  /admin/token-usage:
+    get:
+      tags:
+        - Charts
+      summary: API token usage
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [24h, 7d, 30d]
+          example: 7d
+      responses:
+        '200':
+          description: API chart data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponse'
+
+
   /admin/charts/users:
     get:
       tags:
