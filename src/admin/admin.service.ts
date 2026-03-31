@@ -380,6 +380,8 @@ const lastActive = lastActiveResult?.lastActive || null;
     try {
       return this.paymentRepo.find({
         order: { createdAt: 'DESC' },
+        relations: ['user'],
+
       });
     } catch (error) {
       console.log(error)
