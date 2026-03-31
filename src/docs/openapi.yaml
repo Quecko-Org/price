@@ -389,20 +389,7 @@ paths:
           schema:
             type: string
             example: BTC
-        - name: from
-          in: query
-          required: false
-          description: Unix timestamp (seconds) for start
-          schema:
-            type: integer
-            example: 1773241043
-        - name: to
-          in: query
-          required: false
-          description: Unix timestamp (seconds) for end
-          schema:
-            type: integer
-            example: 1773327443
+       
       responses:
         200:
           description: 24h stats retrieved
