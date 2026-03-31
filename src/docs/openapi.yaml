@@ -623,6 +623,13 @@ paths:
                 newPassword:
                   type: string
                   example: NewPassword123
+                lastIp:
+                  type: string
+                  example: NewPassword123
+                lastLocation:
+                  type: string
+                  example: NewPassword123
+
       responses:
         200:
           description: Profile updated successfully
