@@ -77,9 +77,11 @@ role: UserRole;
 status: UserStatus;
 
 
+@Column({ type: 'varchar', nullable: true })
+lastIp: string | null;
 
-
-
+@Column({ type: 'varchar', nullable: true })
+lastLocation: string | null; 
 
   // -------------------------
   // Preferences

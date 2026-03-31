@@ -21,4 +21,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   oldPassword?: string; // Required if changing password
+
+
+ @IsOptional()
+lastIp?: string;
+
+@IsOptional()
+lastLocation?: string;
 }

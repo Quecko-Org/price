@@ -33,6 +33,12 @@ export class UserService {
     if (dto.email) user.email = dto.email;
     if (dto.companyName) user.companyName = dto.companyName;
 
+
+  
+
+    if (dto.lastIp) user.lastIp = dto.lastIp;
+    if (dto.lastLocation) user.lastLocation = dto.lastLocation;
+
     return this.userRepo.save(user);
   }
    
