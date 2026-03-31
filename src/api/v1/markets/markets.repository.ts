@@ -35,19 +35,23 @@ if (to) {
 
 params.push(limit); // last param for LIMIT
 const limitIndex = params.length;
-
+console.log("parammm",params)
 const query = `
-  SELECT
-    "openTime",
-    "open",
-    "high",
-    "low",
-    "close",
-    "volume"
-  FROM ${table}
-  WHERE ${whereClauses.join(' AND ')}
-  ORDER BY "openTime" ASC
-  LIMIT $${limitIndex};
+  SELECT *
+  FROM (
+    SELECT
+      "openTime",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume"
+    FROM ${table}
+    WHERE ${whereClauses.join(' AND ')}
+    ORDER BY "openTime" DESC
+    LIMIT $${limitIndex}
+  ) sub
+  ORDER BY "openTime" DESC
 `;
 
 try {
