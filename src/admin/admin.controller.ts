@@ -60,7 +60,7 @@ import { CreatePlanDto, UpdatePlanDto } from './dto/payment.dto';
     // 👤 Users
     @Get('users')
     getAllUsers(@Query() query: PaginationDto) {
-      return this.adminService.getAllUsers(query.page, query.limit);
+      return this.adminService.getAllUsers(query);
     }
 
     @Get('token-usage')

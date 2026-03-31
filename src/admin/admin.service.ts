@@ -9,6 +9,7 @@ import { UserStatus } from './dto/admin.dto';
 import { TokenUsageDto, TokenUsageFilter } from './dto/tokenusage.dto';
 import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
 import { CreatePlanDto, UpdatePlanDto } from './dto/payment.dto';
+import { PaginationDto } from './dto/pagination.dto';
 
 @Injectable()
 export class AdminService {
@@ -188,14 +189,42 @@ export class AdminService {
 
 
 
-  async getAllUsers(page = 1, limit = 20) {
-    const [users, total] = await this.userRepo.findAndCount({
-      relations: ['plan'],
-      order: { createdAt: 'DESC' },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+  async getAllUsers(query: PaginationDto) {
 
+    const {
+      page = 1,
+      limit = 20,
+      email,
+      planId,
+      status,
+    } = query;
+  
+    const qb = this.userRepo
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.plan', 'plan')
+      .orderBy('user.createdAt', 'DESC');
+  
+    // 🔍 Email search
+    if (email) {
+      qb.andWhere('user.email ILIKE :email', {
+        email: `%${email}%`,
+      });
+    }
+  
+    // 🔥 Plan filter using planId
+    if (planId) {
+      qb.andWhere('plan.id = :planId', { planId });
+    }
+  
+    // 🔍 Status filter
+    if (status) {
+      qb.andWhere('user.status = :status', { status });
+    }
+  
+    qb.skip((page - 1) * limit).take(limit);
+  
+    const [users, total] = await qb.getManyAndCount();
+  
     return {
       data: users,
       meta: {
@@ -205,7 +234,6 @@ export class AdminService {
       },
     };
   }
-
 
   async getUserDetails(userId: number) {
     // User basic info + plan + payments
