@@ -42,6 +42,9 @@ export class PlanEntity {
   @Column({ default: false })
   chartData: boolean; // chat access
 
+  @Column({ default: true })
+  disabled: boolean;
+  
   @Column({ default: 'community' })
   supportLevel: 'community' | 'email' | 'priority'; // support type
 }
