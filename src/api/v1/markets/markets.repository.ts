@@ -5,7 +5,7 @@ import { DataSource } from 'typeorm';
 @Injectable()
 export class MarketsRepository {
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly dataSource: DataSource) { }
 
   async getMarkets(
     marketId: number,
@@ -13,30 +13,30 @@ export class MarketsRepository {
     from?: number,
     to?: number,
     limit = 500,
-  ) { 
-console.log("interval",interval,marketId)
+  ) {
+    console.log("interval", interval, marketId)
     const table = intervalTable(interval);
 
     const params: any[] = [marketId];
-let whereClauses = ['"marketId" = $1']; // quote marketId just to be safe
-let paramIndex = 2;
+    let whereClauses = ['"marketId" = $1']; // quote marketId just to be safe
+    let paramIndex = 2;
 
-if (from) {
-  params.push(new Date(from * 1000));
-  whereClauses.push(`"openTime" >= $${paramIndex}`);
-  paramIndex++;
-}
+    if (from) {
+      params.push(new Date(from * 1000));
+      whereClauses.push(`"openTime" >= $${paramIndex}`);
+      paramIndex++;
+    }
 
-if (to) {
-  params.push(new Date(to * 1000));
-  whereClauses.push(`"openTime" <= $${paramIndex}`);
-  paramIndex++;
-}
+    if (to) {
+      params.push(new Date(to * 1000));
+      whereClauses.push(`"openTime" <= $${paramIndex}`);
+      paramIndex++;
+    }
 
-params.push(limit); // last param for LIMIT
-const limitIndex = params.length;
-console.log("parammm",params)
-const query = `
+    params.push(limit); // last param for LIMIT
+    const limitIndex = params.length;
+    console.log("parammm", params)
+    const query = `
   SELECT *
   FROM (
     SELECT
@@ -54,13 +54,13 @@ const query = `
   ORDER BY "openTime" DESC
 `;
 
-try {
-  const rows = await this.dataSource.query(query, params);
-  return rows;
-} catch (err) {
-  console.error('Failed fetching candles:', err);
-  throw err;
-}
+    try {
+      const rows = await this.dataSource.query(query, params);
+      return rows;
+    } catch (err) {
+      console.error('Failed fetching candles:', err);
+      throw err;
+    }
 
   }
 
@@ -70,15 +70,15 @@ try {
 
   async getLatestPrice(
     marketId: number,
-  
+
   ) {
-     const rows = await this.dataSource.query(`
+    const rows = await this.dataSource.query(`
       SELECT close,"openTime"
       FROM aggregated_candles_1m
       WHERE "marketId" = $1
       ORDER BY "openTime" DESC
       LIMIT 1
-    `,[marketId]);
+    `, [marketId]);
 
     return rows;
   }
@@ -90,22 +90,21 @@ try {
     marketId: number
   ) {
 
-   let froms = Math.floor(Date.now() / 1000);
-let tos = froms - (24 * 60 * 60); // 24 hou
-
-console.log("df",froms,tos)
     const row = await this.dataSource.query(`
-    SELECT
+  SELECT
     first(open, "openTime") as open,
     last(close, "openTime") as close,
     max(high) as high,
     min(low) as low,
-    sum(volume) as volume
+    sum("volumeUSDT") as "volumeUSDT",
+    sum("baseVolume") as "baseVolume"
   FROM aggregated_candles_1m
   WHERE "marketId" = $1
   AND "openTime" >= NOW() - INTERVAL '24 hours'
-  `,[marketId]);
-  return row;
+`, [marketId]);
+
+
+    return row;
 
 
   }

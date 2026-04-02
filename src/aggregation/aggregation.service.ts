@@ -282,7 +282,9 @@ async flushClosedMinutes() {
         high: aggregated.high,
         low: aggregated.low,
         close: aggregated.close,
-        volume: aggregated.volume,
+        baseVolume:aggregated.baseVolume,
+        volume:aggregated.baseVolume,
+        volumeUSDT:aggregated.volumeUSDT,
       },
       ['marketId', 'openTime'],
     );

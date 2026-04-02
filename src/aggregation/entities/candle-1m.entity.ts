@@ -32,6 +32,12 @@ export class Candle1mEntity {
   @Column({ type: 'double precision' })
   volume: number;
 
+
+  @Column({ type: 'double precision' })
+  baseVolume: number;
+
+  @Column({ type: 'double precision' })
+  volumeUSDT: number; 
   @ManyToOne(() => MarketEntity, { onDelete: 'CASCADE' })
   market: MarketEntity;
 

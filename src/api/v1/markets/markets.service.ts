@@ -5,7 +5,7 @@ import { MarketsRepository } from './markets.repository';
 @Injectable()
 export class MarketsService {
 
-  constructor(private readonly repo: MarketsRepository) {}
+  constructor(private readonly repo: MarketsRepository) { }
 
   async getMarkets(
     marketId: number,
@@ -39,11 +39,12 @@ export class MarketsService {
     const rows = await this.repo.getLatestPrice(
       marketId
     );
-    
+
 
     return {
-      time:rows[0]?.openTime,
-       price: rows[0]?.close ?? null}
+      time: rows[0]?.openTime,
+      price: rows[0]?.close ?? null
+    }
   }
 
 
@@ -55,14 +56,14 @@ export class MarketsService {
 
     );
 
-   
+
     const r = rows[0];
-console.log("roww",rows)
     return {
       high: +r.high,
       low: +r.low,
-      volume: +r.volume,
-      // change24h: ((r.close - r.open) / r.open) * 100,
+      volumeBase: r.baseVolume,
+      volumeUsdt: r.volumeUSDT,
+
     };
   }
 

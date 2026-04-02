@@ -56,11 +56,10 @@ const filtered = valid.filter(c => {
 
   let high = -Infinity;
   let low = Infinity;
-  let volume = 0;
-
   let weightedCloseSum = 0;
   let weightSum = 0;
-
+  let volumeUSDT =0;
+  let baseVolume = 0;
   const open = filtered[0].open;
   const close = filtered[filtered.length-1].close;
 
@@ -75,7 +74,9 @@ const filtered = valid.filter(c => {
     high = Math.max(high, c.high);
     low = Math.min(low, c.low);
 
-    volume += c.volume;
+
+
+    volumeUSDT += ((c.volume * c.close) * trust);
 
     weightedCloseSum += c.close * weight;
     weightSum += weight;
@@ -85,12 +86,15 @@ const filtered = valid.filter(c => {
     ? weightedCloseSum / weightSum
     : close;
 
+   baseVolume = volumeUSDT / weightedClose;
+
   return {
     open,
     high,
     low,
     close,
-    volume,
+    baseVolume,
+    volumeUSDT,
     weightedClose
   };
 }
