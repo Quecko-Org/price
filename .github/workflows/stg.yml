@@ -20,11 +20,11 @@ jobs:
         with:
           clean: false
 
-      # Build Docker image
+ 
       - name: Build Docker Image
         run: docker build -t $IMAGE_NAME .
 
-      # Stop & remove old container (if exists)
+  
       - name: Stop and Remove Old Container
         run: |
           if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
@@ -33,11 +33,15 @@ jobs:
             docker rm $CONTAINER_NAME || true
           fi
 
-      # Run new container
+ 
       - name: Run New Container
         run: |
           docker run -d \
             --name $CONTAINER_NAME \
             -p $PORT:$PORT \
+            --env-file $(pwd)/.env \
             --restart unless-stopped \
             $IMAGE_NAME
+
+      - name: Cleanup Docker
+        run: docker image prune -f
