@@ -4,36 +4,40 @@ on:
   push:
     branches:
       - stg
-      
+
 jobs:
-  build:
-    runs-on: [self-hosted,price-runner]
+  deploy:
+    runs-on: [self-hosted, price-vm]
 
     env:
-      PM2_PROCESS_NAME: price-stage
-      node-version: 24
+      CONTAINER_NAME: price-stage-be
+      IMAGE_NAME: price-stage-be
+      PORT: 3000
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           clean: false
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: ${{ env.node-version }}
 
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
+      # Build Docker image
+      - name: Build Docker Image
+        run: docker build -t $IMAGE_NAME .
 
-      - name: Start or Reload the Application
+      # Stop & remove old container (if exists)
+      - name: Stop and Remove Old Container
         run: |
-          if pm2 list | grep -q "$PM2_PROCESS_NAME"; then
-            echo "Process $PM2_PROCESS_NAME exists. Reloading..."
-            pm2 reload "$PM2_PROCESS_NAME"
-          else
-            echo "Process $PM2_PROCESS_NAME does not exist. Starting..."
-            pm2 start "npm start" --name "$PM2_PROCESS_NAME"
+          if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
+            echo "Stopping existing container..."
+            docker stop $CONTAINER_NAME || true
+            docker rm $CONTAINER_NAME || true
           fi
-          pm2 save
+
+      # Run new container
+      - name: Run New Container
+        run: |
+          docker run -d \
+            --name $CONTAINER_NAME \
+            -p $PORT:$PORT \
+            --restart unless-stopped \
+            $IMAGE_NAME
