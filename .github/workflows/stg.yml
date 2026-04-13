@@ -12,7 +12,7 @@ jobs:
     env:
       CONTAINER_NAME: price-stage-be
       IMAGE_NAME: price-stage-be
-      PORT: 3000
+      PORT: 4000
 
     steps:
       - name: Checkout code
