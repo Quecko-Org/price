@@ -7,7 +7,6 @@ type BaseExchangeCandle = {
   high: number;
   low: number;
   close: number;
-  quote: string;
   volume: number;
 };
 
@@ -15,6 +14,8 @@ export type ExchangeCandle = BaseExchangeCandle;
 
 export type ExchangeLiveCandle = BaseExchangeCandle & {
   isFinal?: boolean;
+  quote: string;
+
 };
 
 // export interface LiveBufferEntry {

@@ -31,7 +31,7 @@ export class MexcWebSocket {
 
     ws.on("open", () => {
 
-      this.logger.log(`MEXC WS connected (${symbols.length})`);
+      // this.logger.log(`MEXC WS connected (${symbols.length})`);
 
       const params = symbols.map(
         s => `spot@public.kline.v3.api.pb@${s}@Min1`

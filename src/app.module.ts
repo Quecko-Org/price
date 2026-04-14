@@ -13,6 +13,9 @@ import { ApiModule } from './api/api.module';
 import { UserModule } from './user/user.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
 import { AdminModule } from './admin/admin.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { CronModule } from './cron/cron.module';
+import { CommonModuleModule } from './common-module/common-module.module';
 
 @Module({
   imports: [
@@ -27,7 +30,8 @@ import { AdminModule } from './admin/admin.module';
       autoLoadEntities: true,
       synchronize: true, // dev only
     }),
-    ExchangesModule,
+    ScheduleModule.forRoot(),
+    ExchangesModule, 
     SymbolsModule,
     SyncModule,
     MarketDataModule,
@@ -37,6 +41,8 @@ import { AdminModule } from './admin/admin.module';
     UserModule,
     ApiUsageModule,
     AdminModule
+    CronModule,
+    CommonModuleModule
     
   ],
   controllers: [AppController],
