@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - stg
-
+ 
 jobs:
   deploy:
     runs-on: [self-hosted, price-vm]
