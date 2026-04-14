@@ -11,21 +11,23 @@ import { MarketDataService } from './market-data.service';
 
 import { ExchangesModule } from '@/ingestion/exchanges/exchanges.module';
 import { MarketEntity } from './market.entity';
+import { MarketsDataController } from './market-data.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SymbolEntity,MarketEntity]),
+    TypeOrmModule.forFeature([SymbolEntity, MarketEntity]),
     ExchangesModule
   ],
   providers: [
     MarketDataService,
   ],
+  controllers: [MarketsDataController],
 
   exports: [
     MarketDataService
   ],
 
 })
-export class MarketDataModule {}
+export class MarketDataModule { }
 
 
