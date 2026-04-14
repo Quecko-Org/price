@@ -14,6 +14,7 @@ import { UserModule } from './user/user.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CronModule } from './cron/cron.module';
+import { CommonModuleModule } from './common-module/common-module.module';
 
 @Module({
   imports: [
@@ -33,12 +34,13 @@ import { CronModule } from './cron/cron.module';
     SymbolsModule,
     SyncModule,
     MarketDataModule,
-    // OnchainModule,
+    OnchainModule,
     AuthModule,
     ApiModule,
     UserModule,
     ApiUsageModule,
-    CronModule
+    CronModule,
+    CommonModuleModule
     
   ],
   controllers: [AppController],

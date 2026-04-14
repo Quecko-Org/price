@@ -4,7 +4,8 @@ const cryptoRates = new Map<string, number>(); // BTC → USD
 /* =========================
    FIAT UPDATE
 ========================= */
-export function updateFiatRates(rates: Record<string, number>) {
+export function 
+updateFiatRates(rates: Record<string, number>) {
   for (const [currency, rate] of Object.entries(rates)) {
     if (!rate || rate <= 0) continue;
     fiatRates.set(currency, 1 / Number(rate)); // invert
@@ -40,6 +41,18 @@ export function convertToUSD(price: number, quote: string): number | null {
   // Crypto
   const crypto = cryptoRates.get(quote);
   if (crypto) return price * crypto;
+
+  return null;
+}
+
+
+//Get token price
+export function getPrice( quote: string): number | null {
+ 
+  // Crypto
+  const crypto = cryptoRates.get(quote);
+  console.log("crypto",cryptoRates)
+  if (crypto) return  crypto;
 
   return null;
 }

@@ -1,3 +1,4 @@
+import { UserPlan } from "@/common/enums/payment.enum";
 import { Column, Entity, PrimaryGeneratedColumn } from "typeorm";
 
 @Entity('plans')
@@ -5,8 +6,10 @@ export class PlanEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ unique: true })
-  name: string; // basic | growth | pro
+
+  @Column({ type: 'enum', enum: UserPlan,default: UserPlan.FREE })
+  name: UserPlan;
+
 
   @Column()
   planIndex: number; // matches contract enum (0,1,2)
@@ -18,9 +21,9 @@ export class PlanEntity {
   @Column()
   maxApiKeys: number; // how many keys user can create
 
-  @Column()
+  @Column() 
   maxEndpoints: number; // how many endpoints per key
-
+ 
   @Column()
   monthlyApiCalls: number; // total API calls per month
 
@@ -39,6 +42,9 @@ export class PlanEntity {
   @Column({ default: false })
   chartData: boolean; // chat access
 
+  @Column({ default: true })
+  disabled: boolean;
+  
   @Column({ default: 'community' })
   supportLevel: 'community' | 'email' | 'priority'; // support type
 }

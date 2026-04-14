@@ -1,5 +1,5 @@
 import { Repository } from "typeorm";
-import { DexPool } from "../../common/entities/pool.entityt";
+import { DexPool } from "../../../common/entities/pool.entityt";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Injectable } from "@nestjs/common";
 

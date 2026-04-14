@@ -14,7 +14,7 @@ import axios from "axios";
 import { LiveCandleBuffer } from "./live/live-buffer";
 import { Cron } from "@nestjs/schedule";
 import { OnModuleInit } from '@nestjs/common';
-import { convertToUSD, updateCryptoPrice } from "@/common/utils/fx-engine.util";
+import { PriceCacheService } from "@/common-module/price-cache-service/price-cache.service";
 
 @Injectable()
 export class AggregationService  implements OnModuleInit {
@@ -29,6 +29,7 @@ export class AggregationService  implements OnModuleInit {
     private readonly binance: BinanceService,
     private readonly mexc: MexcService,
     private readonly symbolsService: SymbolsService,
+    private priceCache: PriceCacheService
 
     
   ) { }
@@ -229,12 +230,24 @@ export class AggregationService  implements OnModuleInit {
     exchange: Exchange,
     candle: ExchangeLiveCandle,
   ) {
-  
-    const usdOpen = convertToUSD(candle.open, candle.quote);
-    const usdHigh = convertToUSD(candle.high, candle.quote);
-    const usdLow = convertToUSD(candle.low, candle.quote);
-    const usdClose = convertToUSD(candle.close, candle.quote);
-  
+    if(exchange == Exchange.UNISWAP_V3 && marketId==6262){
+    const usdOpen = this.priceCache.convertToUSD(candle.open, candle.quote);
+    const usdHigh = this.priceCache.convertToUSD(candle.high, candle.quote);
+    const usdLow = this.priceCache.convertToUSD(candle.low, candle.quote);
+    const usdClose = this.priceCache.convertToUSD(candle.close, candle.quote);
+console.log("handleLiveCandle",marketId,exchange,candle)
+//  }
+// handleLiveCandle binance {
+//   exchange: 'binance',
+//   openTime: 1776078300000,
+//   quote: 'USDT',
+//   open: 0.9997,
+//   high: 0.9998,
+//   low: 0.9997,
+//   close: 0.9997,
+//   volume: 126194,
+//   isFinal: false
+// }
     if (!usdOpen || !usdHigh || !usdLow || !usdClose) return;
   
     const minute = this.minuteBucket(candle.openTime);
@@ -259,7 +272,7 @@ export class AggregationService  implements OnModuleInit {
       volume: candle.volume || 0,
     });
   
-    this.liveBuffer.add(marketId, existing);
+    this.liveBuffer.add(marketId, existing);}
   }
 
 
@@ -340,7 +353,8 @@ export class AggregationService  implements OnModuleInit {
       // ✅ UPDATE FX ENGINE (CRITICAL)
       const market = this.marketCache.get(symbolId);
       if (market?.quote === 'USD') {
-   updateCryptoPrice(market.base, aggregated.close);
+        // console.log("updateddddddddddddddddddddddd")
+   this.priceCache.updateCryptoPrice(market.base, aggregated.close);
       }
   
       // ✅ SAVE FINAL

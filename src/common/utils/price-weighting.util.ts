@@ -11,7 +11,7 @@ function median(values: number[]) {
 }
 
 export function aggregateCandles(candles: ExchangeCandle[]) {
-
+// console.log("aggregateCandles candles",candles)
   if (!candles.length) return null;
 
   // 1️⃣ Validate candles
@@ -41,7 +41,7 @@ const filtered = valid.filter(c => {
   const highDiff = Math.abs(c.high - medianPrice) / medianPrice;
   const lowDiff  = Math.abs(c.low - medianPrice) / medianPrice;
 
-  return closeDiff < 0.05 && highDiff < 0.1 && lowDiff < 0.1;
+  return closeDiff < 0.02 && highDiff < 0.1 && lowDiff < 0.1;
 });
 
   if (!filtered.length) return null;

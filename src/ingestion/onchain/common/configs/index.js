@@ -1,6 +1,7 @@
 exports = {
     uniswapv3: {
         UNISWAP_FACTORY :process.env.UNISWAP_FACTORY,
+         MULTICALL_ADDRESS : "0xcA11bde05977b3631167028862bE2a173976CA11",
             password: process.env.DATABASE_PASSWORD,
       user: process.env.DATABASE_USERNAME,
       host: process.env.DATABASE_HOST,
@@ -18,7 +19,7 @@ exports = {
         bucketBaseUrl: `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_S3_BUCKET_REGION}.amazonaws.com/`,
       },
       cloudfront:{
-        baseUrl: 'https://media.quick.shop'
+        baseUrl: 'https://media.'
     
       }
     }}

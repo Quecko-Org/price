@@ -1,16 +1,15 @@
 
 import { Module } from "@nestjs/common";
-import { UniswapDiscoveryService } from "./uniswap-pool-scanner.service";
-import { UniswapV3Adapter } from "./uniswap-v3.adapter";
-import { UniswapOnChainService } from "./uniswap-onchain.service";
-import { PoolRankingService } from "./pool-ranking-service";
+import { UniswapV3Adapter } from "./v3/uniswap-v3.adapter";
+import { PoolRankingService } from "./v3/pool-ranking-service";
 import { EthereumProvider } from "../../providers/ethereum.provider";
-import { PriceCacheService } from "../../common/price-cache.service";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { Token } from "../../common/entities/token.entity";
 import { DexPool } from "../../common/entities/pool.entityt";
 import { DexMarketMap } from "../../common/entities/pool-market.entity";
 import { MarketEntity } from "@/market-data/market.entity";
+import { V3LiquidityUpdaterService } from "./v3/liquidity-updater.service";
+import { UniswapV3OnchainService } from "./v3/uniswap-onchain.service";
 
 
 @Module({
@@ -20,18 +19,18 @@ import { MarketEntity } from "@/market-data/market.entity";
     providers: [
         EthereumProvider,
         UniswapV3Adapter,
-        UniswapDiscoveryService,
-        UniswapOnChainService,
+        UniswapV3OnchainService,
         PoolRankingService,
-        PriceCacheService,
+        V3LiquidityUpdaterService,
+        
     ],
     exports: [
-        TypeOrmModule,
-        EthereumProvider,
         UniswapV3Adapter,
-        UniswapDiscoveryService,
-        UniswapOnChainService,
-        PoolRankingService]
+        V3LiquidityUpdaterService,
+        PoolRankingService,
+        UniswapV3OnchainService
+    
+    ]
 
 
 

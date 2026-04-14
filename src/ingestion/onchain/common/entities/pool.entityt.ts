@@ -37,12 +37,12 @@ export class DexPool {
   fee: number;
 
   // 🔥 total liquidity in USD
-  @Column({ type: 'numeric', default: 0 })
-  liquidityUsd: string;
+  @Column({ type: 'double precision', default: 0  })
+  liquidityUsd: number;
 
   // 🔥 24h volume
-  @Column({ type: 'numeric', default: 0 })
-  volume24h: string;
+  @Column({ type: 'double precision', default: 0  })
+  volume24h: number;
 
   // 🔥 last trade timestamp
   @Column({ type: 'bigint', nullable: true })
@@ -52,6 +52,15 @@ export class DexPool {
   @Column({ type: 'numeric', default: 0 })
   score: string;
 
+
+
+
+  @Column({ type: 'double precision', default: 0  })
+  token0Balance: number;
+
+  @Column({ type: 'double precision', default: 0  })
+  token1Balance: number;
+  
   // 🔥 active pool flag
   @Column({ default: true })
   isActive: boolean;
@@ -59,3 +68,5 @@ export class DexPool {
   @CreateDateColumn()
   createdAt: Date;
 }
+
+

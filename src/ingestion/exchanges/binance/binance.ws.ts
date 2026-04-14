@@ -38,7 +38,7 @@ export class BinanceWebSocket {
   
     ws.on("open", () => {
       retry = 1;
-      this.logger.log(`✅ Binance WS connected`);
+      // this.logger.log(`✅ Binance WS connected`);
   
       // ❤️ heartbeat
       pingInterval = setInterval(() => {

@@ -61,9 +61,9 @@ export class MarketDataService implements OnModuleInit {
 
       const chunk = binanceSymbols.slice(i, i + BINANCE_CHUNK);
 
-      this.logger.log(`Launching Binance WS (${chunk.length} symbols)`);
+      // this.logger.log(`Launching Binance WS (${chunk.length} symbols)`);
 
-      // this.binanceWs.connect(chunk, symbolMarketMap, symbolMetaMap);
+      this.binanceWs.connect(chunk, symbolMarketMap, symbolMetaMap);
     }
 
     /*
@@ -82,9 +82,9 @@ export class MarketDataService implements OnModuleInit {
 
       const chunk = mexcSymbols.slice(i, i + MEXC_CHUNK);
 
-      this.logger.log(`Launching MEXC WS (${chunk.length} symbols)`);
+      // this.logger.log(`Launching MEXC WS (${chunk.length} symbols)`);
 
-      // this.mexcWs.connect(chunk, symbolMarketMap, symbolMetaMap);
+      this.mexcWs.connect(chunk, symbolMarketMap, symbolMetaMap);
     }
   }
 

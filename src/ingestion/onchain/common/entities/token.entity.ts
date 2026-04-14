@@ -23,9 +23,8 @@ export class Token {
   @Column({ type: 'int' })
   decimals: number;
 
-  // 🔥 stablecoin flag
-  @Column({ default: false })
-  isStable: boolean;
+  @Column()
+  chainId: number;
 
   @CreateDateColumn()
   createdAt: Date;
