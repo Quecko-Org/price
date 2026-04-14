@@ -24,7 +24,7 @@ jobs:
       - name: Build Docker Image
         run: docker build -t $IMAGE_NAME .
 
-  
+   
       - name: Stop and Remove Old Container
         run: |
           if [ "$(docker ps -aq -f name=$CONTAINER_NAME)" ]; then
