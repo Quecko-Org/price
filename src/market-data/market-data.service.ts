@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Exchange } from "@/common/enums/exchanges.enums";
@@ -96,6 +96,38 @@ export class MarketDataService implements OnModuleInit {
             base: symbol,
           },
         });
+      }
+
+
+      async getAllTokens(page = 1, limit = 10) {
+        const [data, total] = await this.marketRepo.findAndCount({
+          skip: (page - 1) * limit,
+          take: limit,
+          order: {
+            id: 'ASC',
+          },
+        });
+      
+        return {
+          data,
+          meta: {
+            total,
+            page,
+            lastPage: Math.ceil(total / limit),
+          },
+        };
+      }
+      async getTokenDetail(symbol: string) {
+        const token = await this.symbolRepo.find({
+          where: { base:symbol },
+          relations: ['market', 'exchanges'],
+        });
+      
+        if (!token) {
+          throw new NotFoundException('Token not found');
+        }
+      
+        return token;
       }
 }
 
