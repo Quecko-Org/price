@@ -24,5 +24,16 @@ async getTokenDetail(@Param('symbol') symbol: string) {
   return this.marketsDataService.getTokenDetail(symbol);
 }
 
+  @Get('top')
+  getTopMarkets(
+    @Query('symbols') symbols?: string,
+    @Query('limit') limit?: number,
+  ) {
+    return this.marketsDataService.getTopMarkets({
+      symbols,
+      limit: limit ? Number(limit) : 50,
+    });
+  }
+
 
 }
