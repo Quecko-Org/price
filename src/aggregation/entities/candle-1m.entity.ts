@@ -33,13 +33,13 @@ export class Candle1mEntity {
   volume: number;
 
 
-  @Column({ type: 'double precision' })
+  @Column({ type: 'double precision',nullable: true  })
   baseVolume: number;
-
-  @Column({ type: 'double precision' })
+ 
+  @Column({ type: 'double precision',nullable: true  })
   volumeUSDT: number; 
   @ManyToOne(() => MarketEntity, { onDelete: 'CASCADE' })
   market: MarketEntity;
-
+ 
 }
 

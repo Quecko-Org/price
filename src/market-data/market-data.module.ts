@@ -12,10 +12,11 @@ import { MarketDataService } from './market-data.service';
 import { ExchangesModule } from '@/ingestion/exchanges/exchanges.module';
 import { MarketEntity } from './market.entity';
 import { MarketsDataController } from './market-data.controller';
+import { Candle1mEntity } from '@/aggregation/entities/candle-1m.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SymbolEntity, MarketEntity]),
+    TypeOrmModule.forFeature([SymbolEntity, MarketEntity,Candle1mEntity]),
     ExchangesModule
   ],
   providers: [

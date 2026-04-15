@@ -6,6 +6,7 @@ import { SymbolEntity } from "@/ingestion/symbols/entities/symbol.entity";
 import { BinanceWebSocket } from "@/ingestion/exchanges/binance/binance.ws";
 import { MexcWebSocket } from "@/ingestion/exchanges/mexc/mexc.ws";
 import { MarketEntity } from "./market.entity";
+import { Candle1mEntity } from "@/aggregation/entities/candle-1m.entity";
 
 @Injectable()
 export class MarketDataService implements OnModuleInit {
@@ -18,6 +19,10 @@ export class MarketDataService implements OnModuleInit {
         private readonly marketRepo: Repository<MarketEntity>,
     private readonly binanceWs: BinanceWebSocket,
     private readonly mexcWs: MexcWebSocket,
+
+
+    @InjectRepository(Candle1mEntity)
+    private readonly candleRepo: Repository<Candle1mEntity>,
   ) {}
 
   async onModuleInit() {
@@ -128,6 +133,94 @@ export class MarketDataService implements OnModuleInit {
         }
       
         return token;
+      }
+
+
+
+      async getTopMarkets(filter: {
+        symbols?: string;
+        limit?: number;
+      }) {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const limit = filter.limit || 50;
+    
+        const query = this.candleRepo
+          .createQueryBuilder('candle')
+          .innerJoin('candle.market', 'market')
+    
+          // last 24h
+          .where('candle.openTime >= :since', { since });
+    
+        // ✅ IN operator
+        if (filter.symbols) {
+          query.andWhere('market.symbol IN (:...symbols)', {
+            symbols: filter.symbols.split(','),
+          });
+        }
+    
+        query
+          // base fields
+          .select('candle.marketId', 'marketId')
+          .addSelect('market.symbol', 'symbol')
+          .addSelect('market.base', 'base')
+          .addSelect('market.quote', 'quote')
+    
+          // ✅ 24h volume
+          .addSelect('SUM(candle.volumeUSDT)', 'volume24h')
+    
+          // ✅ latest price
+          .addSelect(`
+            (
+              SELECT c2.close
+              FROM aggregated_candles_1m c2
+              WHERE c2."marketId" = candle."marketId"
+              ORDER BY c2."openTime" DESC
+              LIMIT 1
+            )
+          `, 'lastPrice')
+    
+          // ✅ price 24h ago
+          .addSelect(`
+            (
+              SELECT c3.close
+              FROM aggregated_candles_1m c3
+              WHERE c3."marketId" = candle."marketId"
+              AND c3."openTime" <= :since
+              ORDER BY c3."openTime" DESC
+              LIMIT 1
+            )
+          `, 'price24hAgo')
+    
+          .groupBy('candle.marketId')
+          .addGroupBy('market.symbol')
+          .addGroupBy('market.base')
+          .addGroupBy('market.quote')
+    
+          .orderBy('volume24h', 'DESC')
+          .limit(limit)
+          .setParameter('since', since);
+    
+        const result = await query.getRawMany();
+    
+        return result.map((r) => {
+          const lastPrice = Number(r.lastPrice);
+          const oldPrice = Number(r.price24hAgo);
+    
+          const change24h =
+            oldPrice > 0
+              ? ((lastPrice - oldPrice) / oldPrice) * 100
+              : 0;
+    
+          return {
+            marketId: Number(r.marketId),
+            symbol: r.symbol,
+            base: r.base,
+            quote: r.quote,
+            price: lastPrice,
+            volume24h: Number(r.volume24h),
+            change24h: Number(change24h.toFixed(2)),
+          };
+        });
       }
 }
 
