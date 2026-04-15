@@ -40,7 +40,7 @@ import { CommonModuleModule } from './common-module/common-module.module';
     ApiModule,
     UserModule,
     ApiUsageModule,
-    AdminModule
+    AdminModule,
     CronModule,
     CommonModuleModule
     

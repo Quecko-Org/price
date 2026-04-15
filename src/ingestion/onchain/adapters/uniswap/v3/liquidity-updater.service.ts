@@ -72,7 +72,7 @@ export class V3LiquidityUpdaterService {
 
     const price0 = this.priceCache.getPrice(pool.token0.canonicalSymbol);
     const price1 = this.priceCache.getPrice(pool.token1.canonicalSymbol);
-// console.log("pr",price0,price1)
+    // console.log("pr",price0,price1)
     if (!price0 || !price1) return;
 
     pool.liquidityUsd =
@@ -94,9 +94,9 @@ export class V3LiquidityUpdaterService {
 
     this.computeLiquidity(pool);
     pool.isActive =
-    pool.liquidityUsd > 1000 &&
-    pool.token0Balance > 0 &&
-    pool.token1Balance > 0;
+      pool.liquidityUsd > 1000 &&
+      pool.token0Balance > 0 &&
+      pool.token1Balance > 0;
     await this.poolRepo.save(pool);
   }
 
@@ -129,5 +129,5 @@ export class V3LiquidityUpdaterService {
   }
 
 
- 
+
 }

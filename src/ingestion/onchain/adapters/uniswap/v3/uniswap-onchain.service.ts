@@ -57,15 +57,20 @@ console.log("sssssssssss")
 
     const mappings = await this.mapRepo.find({
       where: { poolId: In(poolIds) },
+      relations: ['market'], 
     });
 
-    const mapByPool = new Map<number, number[]>();
+    const mapByPool = new Map<number, { marketId: number; base: string }[]>();
 
     for (const m of mappings) {
       if (!mapByPool.has(m.poolId)) {
         mapByPool.set(m.poolId, []);
       }
-      mapByPool.get(m.poolId)!.push(m.marketId);
+    
+      mapByPool.get(m.poolId)!.push({
+        marketId: m.marketId,
+        base: m.market.base, 
+      });
     }
 
     // 🔥 STEP 6: START LISTENERS ONLY FOR TOP POOLS
@@ -74,8 +79,8 @@ console.log("sssssssssss")
       const markets = mapByPool.get(pool.id);
       if (!markets?.length) continue;
 
-      for (const marketId of markets) {
-        this.uniswap.start(pool, marketId,);
+      for (const m of markets) {
+        this.uniswap.start(pool, m.marketId,m.base);
       }
     }
 

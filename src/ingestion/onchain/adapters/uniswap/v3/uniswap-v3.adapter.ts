@@ -7,6 +7,7 @@ import { DexPool } from '../../../common/entities/pool.entityt';
 import { UNISWAP3_POOL_ABI } from '../../../common/abi/uniswap.abi';
 import { PriceCacheService } from '@/common-module/price-cache-service/price-cache.service';
 import { V3LiquidityUpdaterService } from './liquidity-updater.service';
+import { TOKEN_ALIAS } from '@/ingestion/onchain/common/common-tokens';
 
 
 const ERC20_IFACE = new ethers.Interface([
@@ -38,6 +39,9 @@ export class UniswapV3Adapter {
   ) {}
 
 
+  async normalize(symbol: string) {
+    return TOKEN_ALIAS[symbol] || symbol;
+  }
 
   /* =========================
      INITIAL LIQUIDITY
@@ -133,7 +137,7 @@ export class UniswapV3Adapter {
   /* =========================
      START LISTENER
   ========================= */
-  start(pool: DexPool, marketId: number) {
+  start(pool: DexPool, marketId: number, baseSymbol: string) {
 console.log(" start starting")
     const provider = this.ethProvider.getProvider();
 
@@ -164,20 +168,21 @@ console.log(" start starting")
         if (!usdPrice) return;
 
 
-        let baseVolume: number;
+                let baseVolume: number;
 
-// if (pool.token0.symbol === pool.baseSymbol) {
-//   baseVolume = Math.abs(amount0);
-// } else {
-//   baseVolume = Math.abs(amount1);
-// }
+                if (pool.token0.canonicalSymbol == baseSymbol) {
+                  baseVolume = Math.abs(amount0);
+                } else if (pool.token0.canonicalSymbol == baseSymbol) {
+                  baseVolume = Math.abs(amount1);
+                } else {
+                  this.logger.warn(`Base mismatch`);
+                  return;
+                }
 
 
 
 
 
-        const volume =
-          Math.abs(amount0);
 console.log("amounts",args[2],args[3],amount0,amount1,pool)
         // ✅ Candle update
         this.aggregationService.handleLiveCandle(
@@ -190,13 +195,13 @@ console.log("amounts",args[2],args[3],amount0,amount1,pool)
             high: usdPrice,
             low: usdPrice,
             close: usdPrice,
-            volume,
+            volume:baseVolume,
             quote: 'USD',
             isFinal: false,
           }
         );
         pool.lastSwapAt = Date.now();
-        pool.volume24h += Math.abs(volume);
+        pool.volume24h += Math.abs(baseVolume);
 
         pool.score = String(
           Number(pool.liquidityUsd || 0) * 0.7 +
