@@ -121,7 +121,6 @@ export class UniswapV3Adapter {
     // 🔥 Compute liquidity + update status
     for (const pool of pools) {
       await this.liquidityService.computeLiquidity(pool);
-  console.log("poll",pool)
       // ✅ FIX isActive
       pool.isActive =
         pool.liquidityUsd > 1000 &&
@@ -153,9 +152,7 @@ console.log(" start starting")
         // console.log("swapppp",...args)
         const amount0 = Number(formatUnits(args[2], pool.token0.decimals));
         const amount1 = Number(formatUnits(args[3], pool.token1.decimals));
-    
 
-        
         const sqrtPriceX96 = args[4] as bigint;
 
         const price = this.sqrtPriceToPrice(
@@ -172,10 +169,13 @@ console.log(" start starting")
 
                 if (pool.token0.canonicalSymbol == baseSymbol) {
                   baseVolume = Math.abs(amount0);
-                } else if (pool.token0.canonicalSymbol == baseSymbol) {
+                } else if (pool.token1.canonicalSymbol == baseSymbol) {
                   baseVolume = Math.abs(amount1);
+
                 } else {
-                  this.logger.warn(`Base mismatch`);
+                  console.log("ssss",marketId,pool.token0.canonicalSymbol ,baseSymbol)
+                  this.logger.warn("Base mismatch"
+                  ,pool.token0.canonicalSymbol ,baseSymbol,pool.poolAddress);
                   return;
                 }
 
@@ -183,7 +183,7 @@ console.log(" start starting")
 
 
 
-console.log("amounts",args[2],args[3],amount0,amount1,pool)
+console.log("amounts",args[2],args[3],amount0,amount1,pool.poolAddress)
         // ✅ Candle update
         this.aggregationService.handleLiveCandle(
           marketId,
