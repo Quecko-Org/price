@@ -1,3 +1,4 @@
+import { STABLES } from '@/ingestion/onchain/common/common-tokens';
 import { Injectable } from '@nestjs/common';
 
 @Injectable()
@@ -5,6 +6,8 @@ export class PriceCacheService {
     private cryptoRates = new Map<string, number>();
     private fiatRates = new Map<string, number>();
 
+  private static STABLES = new Set(STABLES);
+ 
 
     updateFiatRates(rates: Record<string, number>) {
         for (const [currency, rate] of Object.entries(rates)) {
@@ -26,9 +29,8 @@ export class PriceCacheService {
         if (quote === 'USD') return price;
       
         // Stablecoins
-        if (['USDT', 'USDC', 'FDUSD', 'TUSD'].includes(quote)) {
-          return price;
-        }
+        if (PriceCacheService.STABLES.has(quote)) return price;
+
       
         // Fiat
         const fiat = this.fiatRates.get(quote);
@@ -41,15 +43,20 @@ export class PriceCacheService {
         return null;
       }
 
-      getPrice( quote: string): number | null {
- 
-        // Crypto
-        const crypto = this.cryptoRates.get(quote);
-        // console.log("crypto",crypto)
-        if (crypto) return  crypto;
-      
-        return 1;
+      getPrice( symbol: string): number | null {
+        if (!symbol) return null;
+
+
+        if (PriceCacheService.STABLES.has(symbol)) return 1;
+        // return this.cryptoRates.get(symbol) ?? null;  //Do when redis
+        return this.cryptoRates.get(symbol) ?? 1; 
+
+
       }
+      hasPrice(symbol: string): boolean {
+        return PriceCacheService.STABLES.has(symbol) || this.cryptoRates.has(symbol);
+      }
+    
       
   
 

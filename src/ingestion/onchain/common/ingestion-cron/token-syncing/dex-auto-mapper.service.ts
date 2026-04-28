@@ -74,4 +74,51 @@ export class DexAutoMapperService {
     }
     console.log("endddddddd")
   }
+
+  async mapPoolsV4(pools: DexPool[]) {
+    if (!pools.length) return;
+  
+    const markets = await this.marketRepo.find();
+  
+    const marketMap = new Map<string, number>();
+    for (const m of markets) {
+      marketMap.set(`${m.base}-USD`, m.id);
+      marketMap.set(`${m.base}-${m.quote}`, m.id); // optional
+    }
+  
+    for (const p of pools) {
+  
+      // ✅ skip unready pools (CRITICAL for V4)
+      if (!p.isInitialized) continue;
+  
+      let base: string | null = null;
+      let quote: string | null = null;
+  
+      if (STABLES.includes(p.token0.symbol)) {
+        base = TOKEN_ALIAS[p.token1.symbol] || p.token1.symbol;
+        quote = TOKEN_ALIAS[p.token0.symbol] || p.token0.symbol;
+      } else if (STABLES.includes(p.token1.symbol)) {
+        base = TOKEN_ALIAS[p.token0.symbol] || p.token0.symbol;
+        quote = TOKEN_ALIAS[p.token1.symbol] || p.token1.symbol;
+      } else {
+        continue;
+      }
+  
+      const marketId =
+        marketMap.get(`${base}-USD`) ||
+        marketMap.get(`${base}-${quote}`);
+  
+      if (!marketId) continue;
+  
+      const exists = await this.mapRepo.exists({
+        where: { poolId: p.id, marketId },
+      });
+  
+      if (exists) continue;
+  
+      await this.mapRepo.save({ poolId: p.id, marketId });
+  
+      console.log(`✅ Mapped pool ${p.id}: ${base}-${quote}`);
+    }
+  }
 }

@@ -5,7 +5,7 @@ export interface DexTrade {
   symbol: string;
   chain: Chain;
   dex: Dex;
-  poolAddress: string;
+  poolKey: string;
   price: number;
   volume: number;
   timestamp: number;

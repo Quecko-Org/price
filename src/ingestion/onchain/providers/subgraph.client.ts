@@ -14,7 +14,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 
 export interface SubgraphPoolData {
-  poolAddress: string;
+  poolKey: string;
   totalValueLockedUSD: number;
   volumeUSD24h: number;
   token0Price: number; // token1 per token0
@@ -72,12 +72,12 @@ export class SubgraphClient {
    * Fetch USD liquidity + 24h volume for a batch of pool addresses.
    * Batches up to 100 pools per request (subgraph limit).
    */
-  async getPoolsData(poolAddresses: string[]): Promise<Map<string, SubgraphPoolData>> {
+  async getPoolsData(poolKeyes: string[]): Promise<Map<string, SubgraphPoolData>> {
     const result = new Map<string, SubgraphPoolData>();
-    if (poolAddresses.length === 0) return result;
+    if (poolKeyes.length === 0) return result;
 
     // Subgraph uses lowercase addresses
-    const ids = poolAddresses.map((a) => a.toLowerCase());
+    const ids = poolKeyes.map((a) => a.toLowerCase());
 
     // Batch in chunks of 100
     const CHUNK = 100;
@@ -94,7 +94,7 @@ export class SubgraphClient {
         for (const p of pools) {
           const dayData = p.poolDayData?.[0];
           result.set(p.id.toLowerCase(), {
-            poolAddress: p.id,
+            poolKey: p.id,
             totalValueLockedUSD: parseFloat(p.totalValueLockedUSD || '0'),
             volumeUSD24h: parseFloat(dayData?.volumeUSD || '0'),
             token0Price: parseFloat(p.token0Price || '0'),
@@ -119,7 +119,7 @@ export class SubgraphClient {
     token1Address: string,
     limit = 3,
   ): Promise<Array<{
-    poolAddress: string;
+    poolKey: string;
     fee: number;
     tvlUSD: number;
     token0: { address: string; symbol: string; decimals: number };
@@ -140,7 +140,7 @@ export class SubgraphClient {
 
       const pools = response.data?.data?.pools ?? [];
       return pools.map((p: any) => ({
-        poolAddress: p.id,
+        poolKey: p.id,
         fee: parseInt(p.feeTier),
         tvlUSD: parseFloat(p.totalValueLockedUSD || '0'),
         token0: {
@@ -169,7 +169,7 @@ export class SubgraphClient {
     minTvlUsd = 10_000,
     limit = 200,
   ): Promise<Array<{
-    poolAddress: string;
+    poolKey: string;
     fee: number;
     tvlUSD: number;
     token0: { address: string; symbol: string; decimals: number };
@@ -208,7 +208,7 @@ export class SubgraphClient {
 
       const pools = response.data?.data?.pools ?? [];
       return pools.map((p: any) => ({
-        poolAddress: p.id,
+        poolKey: p.id,
         fee: parseInt(p.feeTier),
         tvlUSD: parseFloat(p.totalValueLockedUSD || '0'),
         token0: {

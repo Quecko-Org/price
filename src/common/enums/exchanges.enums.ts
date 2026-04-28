@@ -4,9 +4,8 @@ export enum Exchange {
     BYBIT = 'bybit',
     OKX = 'okx',
     COINBASE = 'coinbase',
-
-
-    UNISWAP_V3 = 'UNISWAP_V3'
+    UNISWAP_V3 = 'UNISWAP_V3',
+    UNISWAP_V4 = 'UNISWAP_V4'
 
   }
 

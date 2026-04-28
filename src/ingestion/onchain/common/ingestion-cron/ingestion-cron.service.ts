@@ -11,6 +11,7 @@ export class IngestionCronService {
     private readonly tokenSync: TokenSyncService,
     private readonly discovery: UniswapDiscoveryService,
     private readonly autoMapper: DexAutoMapperService,
+    
 
   ) { }
  

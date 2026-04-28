@@ -24,7 +24,7 @@ export class PoolRankingService {
         Math.log(liquidity + 1) * 0.7 +
         Math.log(volume + 1) * 0.3;
 
-      p.score = score.toString();
+      p.score = score;
     }
 
     await this.poolRepo.save(pools);

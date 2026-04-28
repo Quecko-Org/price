@@ -5,68 +5,120 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
-  Index
+  Index,
 } from 'typeorm';
 import { Token } from './token.entity';
+import { Chain, DexType } from '../chain.enum';
+
+/* =========================
+   ENUMS (IMPORTANT)
+========================= */
+
+
 
 @Entity('dex_pools')
+@Index(['dex', 'chainId'])
+@Index(['token0', 'token1'])
 export class DexPool {
 
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  @Index()
-  dex: string;
+  /* =========================
+     CORE IDENTIFICATION
+  ========================= */
 
-  @Column()
-  chain: string;
+  @Column({ type: 'enum', enum: DexType })
+  dex: DexType;
 
+  @Column({ type: 'enum', enum: Chain })
+  chainId: Chain; // 1 = ETH, 137 = Polygon, etc.
+
+  /**
+   * 🔥 UNIFIED KEY
+   * V3 → pool address
+   * V4 → poolId (bytes32)
+   */
   @Column({ unique: true })
-  poolAddress: string;
+  @Index()
+  poolKey: string;
+
+  /* =========================
+     TOKENS
+  ========================= */
 
   @ManyToOne(() => Token)
   @JoinColumn({ name: 'token0_id' })
+  @Index()
   token0: Token;
 
   @ManyToOne(() => Token)
   @JoinColumn({ name: 'token1_id' })
+  @Index()
   token1: Token;
+
+  /* =========================
+     POOL CONFIG
+  ========================= */
 
   @Column({ type: 'int', nullable: true })
   fee: number;
 
-  // 🔥 total liquidity in USD
-  @Column({ type: 'double precision', default: 0  })
+  // V4 specific
+  @Column({ nullable: true })
+  tickSpacing: number;
+
+  @Column({ nullable: true })
+  hooks: string;
+
+  /* =========================
+     LIQUIDITY STATE
+  ========================= */
+
+  @Column({ type: 'double precision', default: 0 })
+  token0Balance: number;
+
+  @Column({ type: 'double precision', default: 0 })
+  token1Balance: number;
+
+  @Column({ type: 'double precision', default: 0 })
   liquidityUsd: number;
 
-  // 🔥 24h volume
-  @Column({ type: 'double precision', default: 0  })
+  @Column({ type: 'double precision', default: 0 })
+  price: number;
+
+  /* =========================
+     TRADING STATS
+  ========================= */
+
+  @Column({ type: 'double precision', default: 0 })
   volume24h: number;
 
-  // 🔥 last trade timestamp
   @Column({ type: 'bigint', nullable: true })
   lastSwapAt: number;
 
-  // 🔥 ranking score (computed)
-  @Column({ type: 'numeric', default: 0 })
-  score: string;
+  /**
+   * 🔥 IMPORTANT: keep numeric, NOT string
+   */
+  @Column({ type: 'double precision', default: 0 })
+  score: number;
 
-
-
-
-  @Column({ type: 'double precision', default: 0  })
-  token0Balance: number;
-
-  @Column({ type: 'double precision', default: 0  })
-  token1Balance: number;
-  
-  // 🔥 active pool flag
+  /* =========================
+     FLAGS
+  ========================= */
+ 
   @Column({ default: true })
   isActive: boolean;
+
+  @Column({ default: false })
+  isInitialized: boolean; // 🔥 track multicall init
+
+  @Column({ nullable: true })
+  quoteTokenAddress:string;
+  /* =========================
+     META
+  ========================= */
 
   @CreateDateColumn()
   createdAt: Date;
 }
-
-

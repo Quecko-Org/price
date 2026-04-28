@@ -4,6 +4,7 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { UniswapV3Adapter } from './uniswap-v3.adapter';
+import { DexType } from '@/ingestion/onchain/common/chain.enum';
 
 
 @Injectable()
@@ -20,75 +21,91 @@ export class UniswapV3OnchainService implements OnModuleInit {
 
     private readonly uniswap: UniswapV3Adapter,
   ) { }
-
   async onModuleInit() {
-console.log("sssssssssss")
-    this.logger.log('🚀 Starting DEX engine...');
-
-    // 🔥 STEP 1: LOAD ALL POOLS
+    this.logger.log('🚀 Starting V3 engine...');
+ 
+    // ── STEP 1: Load all V3 pools that have a market mapping ─────────
+    // No liquidity filter here yet — we need balances first.
+    // isInitialized=false means they haven't had a multicall run yet.
     const allPools = await this.poolRepo.find({
-      // where: { isActive: true },
+      where: { dex: DexType.UNISWAP_V3 },
       relations: ['token0', 'token1'],
-      order: {
-        score: 'DESC',
-      },
     });
-
-    this.logger.log(`📦 Total pools: ${allPools.length}`);
-
-    // 🔥 STEP 2: INITIALIZE ALL LIQUIDITY (MULTICALL)
+ 
+    this.logger.log(`📦 Total V3 pools: ${allPools.length}`);
+ 
+    // ── STEP 2: Multicall balance fetch + liquidity compute ───────────
+    // SharedLiquidityService.initializePools() saves pools internally,
+    // sets isInitialized=true, and marks isActive based on liquidityUsd.
+    // ✅ Do NOT call poolRepo.save() after this — already done inside.
     await this.uniswap.initializePools(allPools, 'ETH');
-
-    // 🔥 STEP 3: SAVE UPDATED LIQUIDITY
-    await this.poolRepo.save(allPools);
-
-    this.logger.log(`💧 Liquidity initialized for all pools`);
-
-    // 🔥 STEP 4: PICK TOP POOLS (LAZY LOAD)
+ 
+    this.logger.log('💧 Liquidity initialized');
+ 
+    // ── STEP 3: Filter to top pools AFTER we have real balances ───────
     const topPools = allPools
-      .filter(p => p.liquidityUsd && p.liquidityUsd > 1000)
+      .filter(p => p.isActive && p.liquidityUsd > 1000)
       .sort((a, b) => b.liquidityUsd - a.liquidityUsd)
       .slice(0, 100);
-
-    this.logger.log(`🔥 Top pools selected: ${topPools.length}`);
-
-    // 🔥 STEP 5: LOAD MARKET MAPPINGS
+ 
+    this.logger.log(`🔥 Top V3 pools: ${topPools.length}`);
+ 
+    if (!topPools.length) {
+      this.logger.warn('⚠️  No active pools found — check token sync and price cache');
+      return;
+    }
+ 
+    // ── STEP 4: Load market mappings for top pools only ───────────────
     const poolIds = topPools.map(p => p.id);
-
+ 
     const mappings = await this.mapRepo.find({
       where: { poolId: In(poolIds) },
-      relations: ['market'], 
+      relations: ['market'], // ✅ must load market relation for m.market.base
     });
-
+ 
+    // Group: poolId → [{ marketId, base }]
     const mapByPool = new Map<number, { marketId: number; base: string }[]>();
-
     for (const m of mappings) {
-      if (!mapByPool.has(m.poolId)) {
-        mapByPool.set(m.poolId, []);
-      }
-    
-      mapByPool.get(m.poolId)!.push({
-        marketId: m.marketId,
-        base: m.market.base, 
-      });
+      if (!m.market) continue; // guard against orphaned mappings
+      if (!mapByPool.has(m.poolId)) mapByPool.set(m.poolId, []);
+      mapByPool.get(m.poolId)!.push({ marketId: m.marketId, base: m.market.base });
     }
-
-    // 🔥 STEP 6: START LISTENERS ONLY FOR TOP POOLS
+ 
+    // ── STEP 5: Start listeners for pools that have market mappings ───
+    let started = 0;
     for (const pool of topPools) {
-
       const markets = mapByPool.get(pool.id);
-      if (!markets?.length) continue;
-
+      if (!markets?.length) continue; // pool exists in DEX but not linked to any market
+ 
       for (const m of markets) {
-        this.uniswap.start(pool, m.marketId,m.base);
+        this.uniswap.start(pool, m.marketId, m.base);
+        started++;
       }
     }
-
-    this.logger.log(`✅ DEX engine running with ${topPools.length} live pools`);
+ 
+    this.logger.log(`✅ V3 engine running — ${started} listeners on ${topPools.length} pools`);
   }
+
+
 }
 
 
+
+
+
+
+
+
+// import { DexMarketMap } from '@/ingestion/onchain/common/entities/pool-market.entity';
+// import { DexPool } from '@/ingestion/onchain/common/entities/pool.entityt';
+// import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+// import { InjectRepository } from '@nestjs/typeorm';
+// import { In, Repository } from 'typeorm';
+// import { UniswapV3Adapter } from './uniswap-v3.adapter';
+// import { DexType } from '@/ingestion/onchain/common/chain.enum';
+
+
+// @Injectable()
 // export class UniswapV3OnchainService implements OnModuleInit {
 
 //   private logger = new Logger(UniswapV3OnchainService.name);
@@ -104,40 +121,69 @@ console.log("sssssssssss")
 //   ) { }
 
 //   async onModuleInit() {
-
+//     console.log("sssssssssss")
 //     this.logger.log('🚀 Starting DEX engine...');
 
-//     // 🔥 load first batch (multi-chain optional)
-//     const pools = await this.poolRepo.find({
-//       where: { isActive: true },
+//     // 🔥 STEP 1: LOAD ALL POOLS
+//     const allPools = await this.poolRepo.find({
+//       where: { dex: DexType.UNISWAP_V3, isActive: true },
 //       relations: ['token0', 'token1'],
+//       order: {
+//         score: 'DESC',
+//       },
 //     });
+
 //     this.logger.log(`📦 Total pools: ${allPools.length}`);
 
-//     const poolIds = pools.map(p => p.id);
+//     // 🔥 STEP 2: INITIALIZE ALL LIQUIDITY (MULTICALL)
+//     await this.uniswap.initializePools(allPools, 'ETH');
 
-//     const mappings = await this.mapRepo.find({ where: { poolId: In(poolIds) } });
+//     // 🔥 STEP 3: SAVE UPDATED LIQUIDITY
+//     await this.poolRepo.save(allPools);
 
-//     const mapByPool = new Map<number, number[]>();
+//     this.logger.log(`💧 Liquidity initialized for all pools`);
+
+//     // 🔥 STEP 4: PICK TOP POOLS (LAZY LOAD)
+//     const topPools = allPools
+//       .filter(p => p.liquidityUsd && p.liquidityUsd > 1000)
+//       .sort((a, b) => b.liquidityUsd - a.liquidityUsd)
+//       .slice(0, 100);
+
+//     this.logger.log(`🔥 Top pools selected: ${topPools.length}`);
+
+//     // 🔥 STEP 5: LOAD MARKET MAPPINGS
+//     const poolIds = topPools.map(p => p.id);
+
+//     const mappings = await this.mapRepo.find({
+//       where: { poolId: In(poolIds) },
+//       relations: ['market'],
+//     });
+
+//     const mapByPool = new Map<number, { marketId: number; base: string }[]>();
+
 //     for (const m of mappings) {
-//       if (!mapByPool.has(m.poolId)) mapByPool.set(m.poolId, []);
-//       mapByPool.get(m.poolId)!.push(m.marketId);
+//       if (!mapByPool.has(m.poolId)) {
+//         mapByPool.set(m.poolId, []);
+//       }
+
+//       mapByPool.get(m.poolId)!.push({
+//         marketId: m.marketId,
+//         base: m.market.base,
+//       });
 //     }
 
-//     // 🔥 initialize pools multicall
-//     await this.uniswap.initializePools(pools, 'ETH');
+//     // 🔥 STEP 6: START LISTENERS ONLY FOR TOP POOLS
+//     for (const pool of topPools) {
 
-//     // 🔥 start listeners
-//     for (const pool of pools) {
-//       try {
 //       const markets = mapByPool.get(pool.id);
 //       if (!markets?.length) continue;
-//       for (const marketId of markets) this.uniswap.start(pool, marketId );
-//     } catch (err) {
-//       this.logger.error(`❌ Failed uniswap.start ${pool.poolAddress}`, err);
-//     }
+
+//       for (const m of markets) {
+//         this.uniswap.start(pool, m.marketId, m.base);
+//       }
 //     }
 
-//     this.logger.log(`✅ DEX engine started with ${pools.length} pools`);
+//     this.logger.log(`✅ DEX engine running with ${topPools.length} live pools`);
 //   }
 // }
+

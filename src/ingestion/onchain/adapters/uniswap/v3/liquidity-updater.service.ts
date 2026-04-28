@@ -46,8 +46,8 @@ export class V3LiquidityUpdaterService {
         );
 
         const [bal0, bal1] = await Promise.all([
-          token0.balanceOf(p.poolAddress),
-          token1.balanceOf(p.poolAddress),
+          token0.balanceOf(p.poolKey),
+          token1.balanceOf(p.poolKey),
         ]);
 
         // ✅ store balances (IMPORTANT)
@@ -58,7 +58,7 @@ export class V3LiquidityUpdaterService {
         this.computeLiquidity(p);
 
       } catch (err) {
-        console.log("❌ error pool", p.poolAddress, err);
+        console.log("❌ error pool", p.poolKey, err);
       }
     }
 
