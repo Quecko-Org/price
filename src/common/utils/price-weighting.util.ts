@@ -41,7 +41,7 @@ const filtered = valid.filter(c => {
   const highDiff = Math.abs(c.high - medianPrice) / medianPrice;
   const lowDiff  = Math.abs(c.low - medianPrice) / medianPrice;
 
-  return closeDiff < 0.02 && highDiff < 0.1 && lowDiff < 0.1;
+  return closeDiff < 0.02 && highDiff < 0.10 && lowDiff < 0.10;
 });
 
   if (!filtered.length) return null;
@@ -76,7 +76,7 @@ const filtered = valid.filter(c => {
 
 
 
-    volumeUSDT += ((c.volume * c.close) * trust);
+    volumeUSDT += (c.volume * c.close);
 
     weightedCloseSum += c.close * weight;
     weightSum += weight;

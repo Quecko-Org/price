@@ -314,7 +314,7 @@ import { PriceCacheService } from "@/common-module/price-cache-service/price-cac
       // ✅ UPDATE FX ENGINE (CRITICAL)
       const market = this.marketCache.get(symbolId);
       if (market?.quote === 'USD') {
-        this.priceCache.updateCryptoPrice(market.base, aggregated.close);
+        this.priceCache.updateCryptoPrice(market.base, aggregated.weightedClose);
       }
 
       // ✅ SAVE FINAL
@@ -325,7 +325,7 @@ import { PriceCacheService } from "@/common-module/price-cache-service/price-cac
           open: aggregated.open,
           high: aggregated.high,
           low: aggregated.low,
-          close: aggregated.close, // 🔥 weighted close
+          close: aggregated.weightedClose, // 🔥 weighted close
           baseVolume: aggregated.baseVolume,
           volume: aggregated.baseVolume,
           volumeUSDT: aggregated.volumeUSDT,
