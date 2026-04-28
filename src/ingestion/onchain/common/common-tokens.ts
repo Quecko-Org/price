@@ -5,6 +5,7 @@ export const BASE_TOKEN=["USDT", "USDC", "WETH"];
 export const TOKEN_ALIAS: Record<string, string> = {
     WETH: "ETH",
     WBTC: "BTC",
+    // nativeETH : "ETH"  //need to add later ask waleed
   };
   
   export const NATIVE_ETH_ADDRESS = "0x0000000000000000000000000000000000000000";
