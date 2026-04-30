@@ -230,17 +230,17 @@ import { PriceCacheService } from "@/common-module/price-cache-service/price-cac
     exchange: Exchange,
     candle: ExchangeLiveCandle,
   ) {
-    if (exchange == Exchange.UNISWAP_V4 || exchange == Exchange.UNISWAP_V3) {
+    // if (exchange == Exchange.UNISWAP_V4 || exchange == Exchange.UNISWAP_V3) {
       const usdOpen = this.priceCache.convertToUSD(candle.open, candle.quote);
       const usdHigh = this.priceCache.convertToUSD(candle.high, candle.quote);
       const usdLow = this.priceCache.convertToUSD(candle.low, candle.quote);
       const usdClose = this.priceCache.convertToUSD(candle.close, candle.quote);
-      console.log("handleLiveCandle", marketId, exchange, candle)
+      // console.log("handleLiveCandle", marketId, exchange, candle)
       //  }
       // handleLiveCandle binance {
       //   exchange: 'binance',
       //   openTime: 1776078300000,
-      //   quote: 'USDT',
+      //   quote: 'USDT', 
       //   open: 0.9997,
       //   high: 0.9998,
       //   low: 0.9997,
@@ -273,7 +273,7 @@ import { PriceCacheService } from "@/common-module/price-cache-service/price-cac
       });
 
       this.liveBuffer.add(marketId, existing);
-    }
+    // }
   }
 
 
@@ -295,13 +295,12 @@ import { PriceCacheService } from "@/common-module/price-cache-service/price-cac
       const exchangeCandles = Array.from(candle.exchanges.values());
 
       if (!exchangeCandles.length) continue;
-
       // ✅ VALID FILTER
       const validCandles = exchangeCandles.filter(c =>
         c.high > 0 &&
         c.low > 0 &&
         c.volume > 0 &&
-        c.high < 1_000_000
+        c.high < 1_000_000,
       );
 
       if (!validCandles.length) continue;
@@ -313,6 +312,7 @@ import { PriceCacheService } from "@/common-module/price-cache-service/price-cac
 
       // ✅ UPDATE FX ENGINE (CRITICAL)
       const market = this.marketCache.get(symbolId);
+
       if (market?.quote === 'USD') {
         this.priceCache.updateCryptoPrice(market.base, aggregated.weightedClose);
       }
