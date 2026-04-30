@@ -73,6 +73,7 @@ export class SharedLiquidityService {
   // V3 pools are their own contracts — exact per-pool balance.
   // ============================================================
   private async initV3Pools(pools: DexPool[]) {
+
     const provider  = this.provider.getProvider();
     const multicall = new ethers.Contract(MULTICALL_ADDRESS, MULTICALL_ABI, provider);
 
@@ -100,10 +101,11 @@ export class SharedLiquidityService {
     }
 
     await this.runMulticall(multicall, calls, callMap);
-
     for (const pool of pools) {
+   
       this.computeLiquidity(pool);
-      pool.isActive      = pool.liquidityUsd > 1000 && pool.token0Balance > 0 && pool.token1Balance > 0;
+      pool.isActive      = OnchainUtil.isActivePool(pool);
+
       pool.isInitialized = true;
     }
 
@@ -123,7 +125,6 @@ export class SharedLiquidityService {
   // StateView accepts bytes32 poolId — never pass poolKey to getBalance().
   // ============================================================
   private async fetchV4StartupPrices(pools: DexPool[]) {
-    console.log("fetchV4StartupPrices",pools.length)
     const provider      = this.provider.getProvider();
     const multicall     = new ethers.Contract(MULTICALL_ADDRESS, MULTICALL_ABI, provider);
     const stateViewAddr = process.env.UNISWAP_V4_STATE_VIEW ?? DEFAULT_STATE_VIEW;
@@ -325,21 +326,30 @@ await this.autoMapper.mapPoolsV4(pools)
   // Returns true if at least one price was available.
   // ============================================================
   computeLiquidity(pool: DexPool): boolean {
-    const sym0   = canonicalSymbol(pool.token0);
-    const sym1   = canonicalSymbol(pool.token1);
-    const price0 = this.priceCache.getPrice(sym0);
-    const price1 = this.priceCache.getPrice(sym1);
-
-    if (price0 == null && price1 == null) {
-      this.logger.warn(`⚠️  No price for ${sym0}/${sym1} — is PriceCacheService loaded?`);
-      return false;
+    const ok = OnchainUtil.computeLiquidityUsd(pool, this.priceCache);
+    if (!ok) {
+      this.logger.warn(
+        `⚠️  No price for ${pool.token0.symbol}/${pool.token1.symbol} — ` +
+        `liquidityUsd cannot be computed. Is PriceCacheService loaded?`
+      );
     }
+    return ok;
 
-    pool.liquidityUsd =
-      (pool.token0Balance * (price0 ?? 0)) +
-      (pool.token1Balance * (price1 ?? 0));
+    // const sym0   = canonicalSymbol(pool.token0);
+    // const sym1   = canonicalSymbol(pool.token1);
+    // const price0 = this.priceCache.getPrice(sym0);
+    // const price1 = this.priceCache.getPrice(sym1);
 
-    return true;
+    // if (price0 == null && price1 == null) {
+    //   this.logger.warn(`⚠️  No price for ${sym0}/${sym1} — is PriceCacheService loaded?`);
+    //   return false;
+    // }
+
+    // pool.liquidityUsd =
+    //   (pool.token0Balance * (price0 ?? 0)) +
+    //   (pool.token1Balance * (price1 ?? 0));
+
+    // return true;
   }
 
   // ============================================================
@@ -429,6 +439,7 @@ await this.autoMapper.mapPoolsV4(pools)
   // tryAggregate: one failed call doesn't abort the chunk
   // ============================================================
   private async runMulticall(
+    
     multicall: ethers.Contract,
     calls:   { target: string; callData: string }[],
     callMap: { pool: DexPool; side: "token0" | "token1"  | "slot0"  }[],
@@ -438,6 +449,8 @@ await this.autoMapper.mapPoolsV4(pools)
       const chunkMap   = callMap.slice(i, i + CHUNK_SIZE);
 
       try {
+
+
         const results: { success: boolean; returnData: string }[] =
           await multicall.tryAggregate.staticCall(false, chunkCalls);
 
@@ -449,30 +462,31 @@ await this.autoMapper.mapPoolsV4(pools)
             this.logger.debug(`balanceOf failed pool=${pool.poolKey} side=${side}`);
             continue;
           }
-          try{
-            if (side === "slot0") {
-              const [sqrtPriceX96] = V3_IFACE.decodeFunctionResult("slot0", returnData);
-            
-             
-  const price = OnchainUtil.sqrtPriceToPrice(
-    sqrtPriceX96,
-    pool.token0.decimals,
-    pool.token1.decimals
-  );
-  if (price != null)     OnchainUtil.applyPrice(pool, price, this.priceCache);
-
-            }
-
-          }catch(e){}
 
           try {
+          
+            if (side === "slot0") {
+              const [sqrtPriceX96] = V3_IFACE.decodeFunctionResult("slot0", returnData);
+             const price = OnchainUtil.sqrtPriceToPrice(
+                          sqrtPriceX96,
+                          pool.token0.decimals,
+                          pool.token1.decimals
+             );
+             if (price != null)  OnchainUtil.applyPrice(pool, price, this.priceCache);
+            }
+            
+            
+        
+
+         
             const [raw]    = ERC20_IFACE.decodeFunctionResult("balanceOf", returnData);
             const decimals = side === "token0" ? pool.token0.decimals : pool.token1.decimals;
             const amount   = Number(ethers.formatUnits(raw, decimals));
+            if (side === "token0")  {                 pool.token0Balance = amount;
+            }
+            if (side === "token1"){ pool.token1Balance = amount;}
 
-            if (side === "token0") pool.token0Balance = amount;
-            else                   pool.token1Balance = amount;
-
+  
           } catch {
             this.logger.warn(`Decode failed pool=${pool.poolKey} side=${side}`);
           }

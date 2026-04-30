@@ -230,7 +230,7 @@ import { PriceCacheService } from "@/common-module/price-cache-service/price-cac
     exchange: Exchange,
     candle: ExchangeLiveCandle,
   ) {
-    if (exchange == Exchange.UNISWAP_V4 ) {
+    if (exchange == Exchange.UNISWAP_V4 || exchange == Exchange.UNISWAP_V3) {
       const usdOpen = this.priceCache.convertToUSD(candle.open, candle.quote);
       const usdHigh = this.priceCache.convertToUSD(candle.high, candle.quote);
       const usdLow = this.priceCache.convertToUSD(candle.low, candle.quote);

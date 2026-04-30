@@ -45,8 +45,14 @@ export class TokenSyncService {
 
       // 2️⃣ Fetch Uniswap token list
       const res = await fetch("https://tokens.uniswap.org");
-      const data = await res.json();
-
+       if (!res.ok) {
+        const text = await res.text();
+        console.error('Error response:', text);
+        // throw new Error(`HTTP ${res.status}`);
+      }
+            const data = await res.json();
+      
+ 
       const tokenList = data.tokens.filter((t: any) => t.chainId === 1);
 
       // Map: symbol → array of tokens

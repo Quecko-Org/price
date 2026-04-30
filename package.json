@@ -37,6 +37,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
     "date-fns": "^4.1.0",
+    "decimal.js": "^10.6.0",
     "ethers": "^6.16.0",
     "lodash.chunk": "^4.2.0",
     "nodemailer": "^8.0.2",

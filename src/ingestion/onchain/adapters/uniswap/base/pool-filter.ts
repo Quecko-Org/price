@@ -42,6 +42,7 @@ export function getPoolSides(
   t0: Token,
   t1: Token,
 ): { base: Token; quote: Token } | null {
+  //wbtc pepe
   if (isQuoteToken(t1) && !isQuoteToken(t0)) return { base: t0, quote: t1 };
   if (isQuoteToken(t0) && !isQuoteToken(t1)) return { base: t1, quote: t0 };
   // Both are quote tokens (e.g. USDC/USDT, ETH/USDC) — treat token1 as quote

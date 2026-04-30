@@ -48,8 +48,8 @@ export class PriceCacheService {
 
 
         if (PriceCacheService.STABLES.has(symbol)) return 1;
-        // return this.cryptoRates.get(symbol) ?? null;  //Do when redis
-        return this.cryptoRates.get(symbol) ?? 1; 
+        return this.cryptoRates.get(symbol) ?? null;  //Do when redis
+        // return this.cryptoRates.get(symbol) ?? 1; 
 
 
       }

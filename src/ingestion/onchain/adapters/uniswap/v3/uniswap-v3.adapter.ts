@@ -67,6 +67,7 @@ export class UniswapV3Adapter {
           pool.token0.decimals,
           pool.token1.decimals
         );
+
         let usdPrice
         if (price != null)  {   
          usdPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache)
@@ -117,6 +118,7 @@ console.log("swap v3",usdPrice)
         // amount0/amount1 are raw uint256
         const amount0 = Number(formatUnits(args[5], pool.token0.decimals));
         const amount1 = Number(formatUnits(args[6], pool.token1.decimals));
+
         await this.liquidity.updateFromMint(pool, amount0, amount1);
       } catch (err) {
         this.logger.error(`Mint error ${pool.poolKey}`, err);
@@ -126,9 +128,11 @@ console.log("swap v3",usdPrice)
     // ---- BURN -------------------------------------------------------
     contract.on("Burn", async (...args) => {
       try {
+
         // args: [owner, tickLower, tickUpper, amount, amount0, amount1]
         const amount0 = Number(formatUnits(args[4], pool.token0.decimals));
         const amount1 = Number(formatUnits(args[5], pool.token1.decimals));
+
         await this.liquidity.updateFromBurn(pool, amount0, amount1);
       } catch (err) {
         this.logger.error(`Burn error ${pool.poolKey}`, err);
