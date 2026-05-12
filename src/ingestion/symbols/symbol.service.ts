@@ -94,7 +94,7 @@ export class SymbolsService {
     for (let i = 0; i < dedupedSymbols.length; i += CHUNK_SIZE) {
       const chunk = dedupedSymbols.slice(i, i + CHUNK_SIZE);
 
-      try {
+      try { 
         await this.dataSource.transaction(async manager => {
           const marketRepo = manager.getRepository(MarketEntity);
           const symbolRepo = manager.getRepository(SymbolEntity);

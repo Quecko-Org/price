@@ -8,6 +8,7 @@ import { DexMarketMap } from './common/entities/pool-market.entity';
 import { AdapterModule } from './adapters/adapters.module';
 import { EthereumProvider } from './providers/ethereum.provider';
 import { IngestionCronModule } from './common/ingestion-cron/ingestion-cron.module';
+import { ChainProviderFactory } from './providers/provider.factory';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { IngestionCronModule } from './common/ingestion-cron/ingestion-cron.modu
   ],
   providers: [
     OnchainService,
-    EthereumProvider
+    EthereumProvider,ChainProviderFactory
   ],
 })
 export class OnchainModule {}

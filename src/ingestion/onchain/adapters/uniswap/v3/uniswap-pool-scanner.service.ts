@@ -1,107 +1,121 @@
+
+
+// ============================================================
+// uniswap-pool-scanner.service.ts  (UniswapDiscoveryService)
+//
+// Discovers V3 pools for ANY chain by accepting chainId + provider.
+// Uses CHAIN_CONFIGS[chainId] for factory address and quote addresses.
+// PancakeSwap V3 on BSC uses the same factory interface as Uniswap V3.
+// ============================================================
 import { InjectRepository } from "@nestjs/typeorm";
-import { EthereumProvider } from "../../../providers/ethereum.provider";
 import { DexPool } from "../../../common/entities/pool.entityt";
 import { Repository } from "typeorm";
 import { Injectable, Logger } from "@nestjs/common";
 import { ethers } from "ethers";
 import { UNISWAP3_FACTORY_ABI } from "../../../common/abi/uniswap.abi";
-
 import { Token } from "../../../common/entities/token.entity";
-import { Chain, DexType } from "@/ingestion/onchain/common/chain.enum";
-import { getPoolSides, isQuoteToken, isTrackablePool } from "../base/pool-filter";
-
-
+import { Chain, DexType, CHAIN_CONFIGS } from "@/ingestion/onchain/common/chain.config";
+import { getPoolSides } from "../base/pool-filter";
 
 const FEES = [500, 3000, 10000];
 
 @Injectable()
 export class UniswapDiscoveryService {
-
-  private logger = new Logger(UniswapDiscoveryService.name);
+  private readonly logger = new Logger(UniswapDiscoveryService.name);
 
   constructor(
-    private readonly provider: EthereumProvider,
+    @InjectRepository(Token)   private tokenRepo: Repository<Token>,
+    @InjectRepository(DexPool) private poolRepo:  Repository<DexPool>,
+  ) {}
 
-    @InjectRepository(Token)
-    private tokenRepo: Repository<Token>,
+  // ── Main entry — called by UniswapV3OnchainService.bootChain() ──
+  async discover(chainId: Chain, provider: ethers.WebSocketProvider) {
+    const config = CHAIN_CONFIGS[chainId];
+    this.logger.log(`🔍 ${config.name} V3 discovery...`);
 
-    @InjectRepository(DexPool)
-    private poolRepo: Repository<DexPool>,
-  ) { }
+    // Load tokens for THIS chain only
+    const allTokens = await this.tokenRepo.find({ where: { chainId } });
 
+    if (!allTokens.length) {
+      this.logger.warn(`${config.name}: no tokens in DB — run TokenSyncService first`);
+      return;
+    }
 
-  async discover() {
-    this.logger.log("🔍 Discovering Uniswap V3 pools...");
-  
-    const allTokens = await this.tokenRepo.find();
-  
-    // ✅ Split using the same isQuoteToken() from pool-filter
-    // — single source of truth, no hardcoded symbol lists here
-    const quoteTokens = allTokens.filter(t => isQuoteToken(t));
-    const baseTokens  = allTokens.filter(t => !isQuoteToken(t));
-  
-    this.logger.log(
-      `📊 ${allTokens.length} tokens → ${baseTokens.length} base × ${quoteTokens.length} quote`
+    // Split by quote address from chain config (not hardcoded STABLES array)
+    const quoteTokens = allTokens.filter(t =>
+      config.quoteAddresses.has(t.address.toLowerCase())
     );
-  
-    // Also check quote×quote pairs (e.g. WETH/USDC, WBTC/USDC)
-    // These are real high-volume pools you'd otherwise miss
+    const baseTokens = allTokens.filter(t =>
+      !config.quoteAddresses.has(t.address.toLowerCase())
+    );
+
+    // quote × quote pairs (WETH/USDC, WBTC/USDT etc.)
     const quotePairs: [Token, Token][] = [];
     for (let i = 0; i < quoteTokens.length; i++) {
       for (let j = i + 1; j < quoteTokens.length; j++) {
         quotePairs.push([quoteTokens[i], quoteTokens[j]]);
       }
     }
-  
-    this.logger.log(`🔗 ${baseTokens.length * quoteTokens.length} base/quote + ${quotePairs.length} quote/quote pairs`);
-  
-    const contract = new ethers.Contract(
-      process.env.UNISWAP_FACTORY!,
-      UNISWAP3_FACTORY_ABI,
-      this.provider.getProvider()
+
+    this.logger.log(
+      `${config.name}: ${baseTokens.length} base × ${quoteTokens.length} quote ` +
+      `+ ${quotePairs.length} quote/quote pairs`
     );
-  
-    // ── base × quote pairs ──────────────────────────────────────
+
+    // Use chain-specific factory address from config
+    const contract = new ethers.Contract(
+      config.uniswapV3Factory,
+      UNISWAP3_FACTORY_ABI,
+      provider  // chain-specific provider
+    );
+
+    let discovered = 0;
+
+    // base × quote
     for (const base of baseTokens) {
       for (const quote of quoteTokens) {
-        await this.checkAndSave(contract, base, quote);
+        if (await this.checkAndSave(contract, base, quote, chainId)) discovered++;
       }
     }
-  
-    // ── quote × quote pairs (WETH/USDC, WBTC/USDC etc.) ────────
+
+    // quote × quote
     for (const [a, b] of quotePairs) {
-      await this.checkAndSave(contract, a, b);
+      if (await this.checkAndSave(contract, a, b, chainId)) discovered++;
     }
-  
-    this.logger.log("✅ V3 discovery complete");
+
+    this.logger.log(`✅ ${config.name} V3: ${discovered} new pools discovered`);
   }
-  
+
   private async checkAndSave(
     contract: ethers.Contract,
-    tokenA: Token,
-    tokenB: Token,
-  ) {
-    // Sort addresses — Uniswap requires token0 < token1
-    let token0 = tokenA;
-    let token1 = tokenB;
+    tokenA:   Token,
+    tokenB:   Token,
+    chainId:  Chain,
+  ): Promise<boolean> {
+    if (tokenA.address === tokenB.address) return false;
+
+    // Uniswap requires token0 < token1 by address
+    let token0 = tokenA, token1 = tokenB;
     if (token0.address.toLowerCase() > token1.address.toLowerCase()) {
       [token0, token1] = [token1, token0];
     }
-  
+
     const sides = getPoolSides(token0, token1);
-    if (!sides) return;
-  
+    if (!sides) return false;
+
+    let saved = false;
+
     for (const fee of FEES) {
       try {
         const poolKey = await contract.getPool(token0.address, token1.address, fee);
         if (!poolKey || poolKey === ethers.ZeroAddress) continue;
-  
+
         const exists = await this.poolRepo.exists({ where: { poolKey } });
         if (exists) continue;
-  
+
         await this.poolRepo.save({
           dex:               DexType.UNISWAP_V3,
-          chainId:           Chain.ETHEREUM,
+          chainId,                                    // ✅ correct chain
           poolKey,
           token0,
           token1,
@@ -109,13 +123,138 @@ export class UniswapDiscoveryService {
           quoteTokenAddress: sides.quote.address.toLowerCase(),
           isActive:          true,
         });
-  
-        this.logger.log(`✅ ${sides.base.symbol}/${sides.quote.symbol} fee=${fee}`);
-  
-      } catch (_) {}
+
+        this.logger.log(
+          `✅ [${CHAIN_CONFIGS[chainId].name}] ${sides.base.symbol}/${sides.quote.symbol} fee=${fee}`
+        );
+        saved = true;
+
+      } catch (_) {
+        // getPool reverts for non-existent pairs — not an error
+      }
     }
+
+    return saved;
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// @Injectable()
+// export class UniswapDiscoveryService {
+
+//   private logger = new Logger(UniswapDiscoveryService.name);
+
+//   constructor(
+//     private readonly provider: EthereumProvider,
+
+//     @InjectRepository(Token)
+//     private tokenRepo: Repository<Token>,
+
+//     @InjectRepository(DexPool)
+//     private poolRepo: Repository<DexPool>,
+//   ) { }
+
+
+//   async discover() {
+//     this.logger.log("🔍 Discovering Uniswap V3 pools...");
+  
+//     const allTokens = await this.tokenRepo.find();
+  
+//     // ✅ Split using the same isQuoteToken() from pool-filter
+//     // — single source of truth, no hardcoded symbol lists here
+//     const quoteTokens = allTokens.filter(t => isQuoteToken(t));
+//     const baseTokens  = allTokens.filter(t => !isQuoteToken(t));
+  
+//     this.logger.log(
+//       `📊 ${allTokens.length} tokens → ${baseTokens.length} base × ${quoteTokens.length} quote`
+//     );
+   
+//     // Also check quote×quote pairs (e.g. WETH/USDC, WBTC/USDC)
+//     // These are real high-volume pools you'd otherwise miss
+//     const quotePairs: [Token, Token][] = [];
+//     for (let i = 0; i < quoteTokens.length; i++) {
+//       for (let j = i + 1; j < quoteTokens.length; j++) {
+//         quotePairs.push([quoteTokens[i], quoteTokens[j]]);
+//       }
+//     }
+  
+//     this.logger.log(`🔗 ${baseTokens.length * quoteTokens.length} base/quote + ${quotePairs.length} quote/quote pairs`);
+  
+//     const contract = new ethers.Contract(
+//       process.env.UNISWAP_FACTORY!,
+//       UNISWAP3_FACTORY_ABI,
+//       this.provider.getProvider()
+//     );
+  
+//     // ── base × quote pairs ──────────────────────────────────────
+//     for (const base of baseTokens) {
+//       for (const quote of quoteTokens) {
+//         await this.checkAndSave(contract, base, quote);
+//       }
+//     }
+  
+//     // ── quote × quote pairs (WETH/USDC, WBTC/USDC etc.) ────────
+//     for (const [a, b] of quotePairs) {
+//       await this.checkAndSave(contract, a, b);
+//     }
+  
+//     this.logger.log("✅ V3 discovery complete");
+//   }
+  
+//   private async checkAndSave(
+//     contract: ethers.Contract,
+//     tokenA: Token,
+//     tokenB: Token,
+//   ) {
+//     // Sort addresses — Uniswap requires token0 < token1
+//     let token0 = tokenA;
+//     let token1 = tokenB;
+//     if (token0.address.toLowerCase() > token1.address.toLowerCase()) {
+//       [token0, token1] = [token1, token0];
+//     }
+  
+//     const sides = getPoolSides(token0, token1);
+//     if (!sides) return;
+  
+//     for (const fee of FEES) {
+//       try {
+//         const poolKey = await contract.getPool(token0.address, token1.address, fee);
+//         if (!poolKey || poolKey === ethers.ZeroAddress) continue;
+  
+//         const exists = await this.poolRepo.exists({ where: { poolKey } });
+//         if (exists) continue;
+  
+//         await this.poolRepo.save({
+//           dex:               DexType.UNISWAP_V3,
+//           chainId:           Chain.ETHEREUM,
+//           poolKey,
+//           token0,
+//           token1,
+//           fee,
+//           quoteTokenAddress: sides.quote.address.toLowerCase(),
+//           isActive:          true,
+//         });
+  
+//         this.logger.log(`✅ ${sides.base.symbol}/${sides.quote.symbol} fee=${fee}`);
+  
+//       } catch (_) {}
+//     }
+//   }
+// }
 
 
 

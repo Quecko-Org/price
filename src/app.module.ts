@@ -28,7 +28,7 @@ import { CommonModuleModule } from './common-module/common-module.module';
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
       autoLoadEntities: true,
-      synchronize: true, // dev only
+      synchronize: process.env.NODE_ENV !== 'production', // never in prod
     }),
     ScheduleModule.forRoot(),
     ExchangesModule, 

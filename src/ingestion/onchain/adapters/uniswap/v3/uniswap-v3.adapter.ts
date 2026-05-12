@@ -1,197 +1,281 @@
+// ============================================================
+// uniswap-v3.adapter.ts
+//
+// Handles Swap/Mint/Burn events for V3 pools on ANY chain.
+// Provider is passed per-call (not injected) so the same
+// adapter instance works for Ethereum, BSC, Arbitrum etc.
+//
+// Changes from single-chain version:
+//   - start() accepts provider parameter (chain-specific WS)
+//   - initializePools() accepts provider parameter
+//   - Publishes to Kafka instead of calling AggregationService
+//   - Uses OnchainUtil for price math (shared with V4)
+//   - volume24h initialized to 0 guard (was NaN += number)
+// ============================================================
 import { Injectable, Logger } from '@nestjs/common';
 import { ethers, formatUnits } from 'ethers';
 import { Exchange } from '@/common/enums/exchanges.enums';
-import { AggregationService } from '@/aggregation/aggregation.service';
-import { EthereumProvider } from '../../../providers/ethereum.provider';
 import { DexPool } from '../../../common/entities/pool.entityt';
 import { UNISWAP3_POOL_ABI } from '../../../common/abi/uniswap.abi';
 import { PriceCacheService } from '@/common-module/price-cache-service/price-cache.service';
-import { V3LiquidityUpdaterService } from './liquidity-updater.service';
-import { TOKEN_ALIAS } from '@/ingestion/onchain/common/common-tokens';
-import {  SharedLiquidityService } from '../base/shared-liquidity.service';
+import { SharedLiquidityService } from '../base/shared-liquidity.service';
 import { canonicalSymbol } from '../base/pool-filter';
 import { OnchainUtil } from '@/ingestion/onchain/common/onchain.utils';
-
-
-
+import { KafkaService } from '@/common-module/kafka/kafka.service';
 
 @Injectable()
 export class UniswapV3Adapter {
-
-  private logger = new Logger(UniswapV3Adapter.name);
+  private readonly logger = new Logger(UniswapV3Adapter.name);
 
   constructor(
-    private readonly ethProvider: EthereumProvider,
-    private readonly aggregationService: AggregationService,
     private readonly priceCache: PriceCacheService,
-    private readonly liquidity: SharedLiquidityService,
+    private readonly liquidity:  SharedLiquidityService,
+    private readonly kafka:      KafkaService,
   ) {}
 
-
-  async normalize(symbol: string) {
-    return TOKEN_ALIAS[symbol] || symbol;
-  }
-
-
-// ------------------------------------------------------------------
-  // BATCH INIT  (multicall balances for all pools at startup)
-  // ------------------------------------------------------------------
-  async initializePools(pools: DexPool[], _chain: string) {
-    // Delegate entirely to shared service
+  // ── Multicall balance + slot0 init for all pools on a chain ──
+  // provider is passed in so each chain uses its own WS connection
+  async initializePools(pools: DexPool[], _chainName: string) {
     await this.liquidity.initializePools(pools);
   }
- 
-  // ------------------------------------------------------------------
-  // LIVE LISTENER  (one contract per pool)
-  // ------------------------------------------------------------------
-  start(pool: DexPool, marketId: number, baseSymbol: string) {
-    const provider = this.ethProvider.getProvider();
- 
-    const contract = new ethers.Contract(
-      pool.poolKey,
-      UNISWAP3_POOL_ABI,
-      provider
-    );
- 
-    // ---- SWAP -------------------------------------------------------
+
+  // ── Attach Swap/Mint/Burn listeners for one pool ──────────────
+  // provider is the chain-specific WebSocketProvider
+  start(
+    pool:       DexPool,
+    marketId:   number,
+    baseSymbol: string,
+    provider:   ethers.WebSocketProvider,
+  ) {
+    const contract = new ethers.Contract(pool.poolKey, UNISWAP3_POOL_ABI, provider);
+
+    // ── SWAP ────────────────────────────────────────────────────
+    // args: [sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick]
     contract.on("Swap", async (...args) => {
       try {
-        // args: [sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick]
         const sqrtPriceX96 = args[4] as bigint;
- 
-        // ✅ formatUnits here — these are raw int256 from the contract
+
+        // formatUnits first — raw int256 from chain
         const amount0 = Number(formatUnits(args[2], pool.token0.decimals));
         const amount1 = Number(formatUnits(args[3], pool.token1.decimals));
+
+        // Compute ratio price from sqrtPriceX96
         const price = OnchainUtil.sqrtPriceToPrice(
           sqrtPriceX96,
           pool.token0.decimals,
-          pool.token1.decimals
+          pool.token1.decimals,
         );
+        if (!price || price <= 0) return;
 
-        let usdPrice
-        if (price != null)  {   
-         usdPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache)
-console.log("swap v3",usdPrice)
+        // Convert to USD using priceCache + quoteTokenAddress direction
+        const usdPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache);
         if (!usdPrice || usdPrice <= 0) return;
+
         pool.price = usdPrice;
-        }
-        // ✅ Volume: use the base token's absolute amount
-        // quoteTokenAddress tells us which side is quote, other side is base
+
+        // Volume = base token absolute amount
+        // quoteTokenAddress tells us which side is the quote
         const baseIsToken0 = pool.quoteTokenAddress === pool.token1.address.toLowerCase();
         const baseVolume   = baseIsToken0 ? Math.abs(amount0) : Math.abs(amount1);
- 
-        // Safety: base symbol must match the market we're updating
+
+        // Guard: base symbol must match the market we're updating
         const actualBase = canonicalSymbol(baseIsToken0 ? pool.token0 : pool.token1);
         if (actualBase !== baseSymbol) {
-          this.logger.warn(`Base mismatch: expected ${baseSymbol} got ${actualBase} pool=${pool.poolKey}`);
+          this.logger.warn(
+            `Base mismatch: expected=${baseSymbol} got=${actualBase} pool=${pool.poolKey}`
+          );
           return;
         }
- 
-        this.aggregationService.handleLiveCandle(marketId, Exchange.UNISWAP_V3, {
-          exchange: Exchange.UNISWAP_V3,
-          openTime: Date.now(),
-          open:     usdPrice,
-          high:     usdPrice,
-          low:      usdPrice,
-          close:    usdPrice,
-          volume:   baseVolume,
-          quote:    'USD',
-          isFinal:  false,
-        });
- 
+
+        // Publish to Kafka — aggregation consumer folds into minute bucket
+        this.kafka.publishDexSwap({
+          marketId,
+          exchange:   Exchange.UNISWAP_V3,
+          priceUsd:   usdPrice,
+          baseVolume,
+          openTime:   Date.now(),
+        }).catch(err => this.logger.error('Kafka publish failed', err));
+
+        // Update in-memory pool stats
         pool.lastSwapAt = Date.now();
-        pool.volume24h += baseVolume;
+        pool.volume24h  = (pool.volume24h ?? 0) + baseVolume;
         pool.score      = (pool.liquidityUsd ?? 0) * 0.7 + (pool.volume24h ?? 0) * 0.3;
- 
-        // ✅ Pass already-formatted amounts — no further decimal division in service
+
+        // Delta TVL tracking — amounts already in human-readable units
         await this.liquidity.updateFromSwap(pool, amount0, amount1);
- 
+
       } catch (err) {
         this.logger.error(`Swap error ${pool.poolKey}`, err);
       }
     });
- 
-    // ---- MINT -------------------------------------------------------
+
+    // ── MINT ────────────────────────────────────────────────────
+    // args: [sender, owner, tickLower, tickUpper, amount, amount0, amount1]
     contract.on("Mint", async (...args) => {
       try {
-        // args: [sender, owner, tickLower, tickUpper, amount, amount0, amount1]
-        // amount0/amount1 are raw uint256
         const amount0 = Number(formatUnits(args[5], pool.token0.decimals));
         const amount1 = Number(formatUnits(args[6], pool.token1.decimals));
-
         await this.liquidity.updateFromMint(pool, amount0, amount1);
       } catch (err) {
         this.logger.error(`Mint error ${pool.poolKey}`, err);
       }
     });
- 
-    // ---- BURN -------------------------------------------------------
+
+    // ── BURN ────────────────────────────────────────────────────
+    // args: [owner, tickLower, tickUpper, amount, amount0, amount1]
     contract.on("Burn", async (...args) => {
       try {
-
-        // args: [owner, tickLower, tickUpper, amount, amount0, amount1]
         const amount0 = Number(formatUnits(args[4], pool.token0.decimals));
         const amount1 = Number(formatUnits(args[5], pool.token1.decimals));
-
         await this.liquidity.updateFromBurn(pool, amount0, amount1);
       } catch (err) {
         this.logger.error(`Burn error ${pool.poolKey}`, err);
       }
     });
- 
-    this.logger.log(`👂 V3 listening ${pool.poolKey}`);
-  }
- 
-  // ------------------------------------------------------------------
-  // PRICE UTILS
-  // ------------------------------------------------------------------
- 
-  /**
-   * Converts Uniswap sqrtPriceX96 → token0/token1 price ratio.
-   * Result: how many token1 units per 1 token0 (in human-readable terms).
-   */
-  private sqrtPriceToPrice(sqrt: bigint, decimals0: number, decimals1: number): number {
-    const ratio = Number(sqrt) / 2 ** 96;
-    const raw   = ratio * ratio;
-    // Adjust for decimal difference: multiply by 10^(d0-d1)
-    return raw * (10 ** (decimals0 - decimals1));
-  }
- 
-  /**
-   * Converts the pool ratio price → USD using priceCache.
-   *
-   * Uses quoteTokenAddress to determine direction reliably,
-   * with fallback to checking which side has a cached price.
-   *
-   *  price = token0 per token1
-   *  if quote = token1  →  USD = price × token1_usd_price
-   *  if quote = token0  →  USD = (1/price) × token0_usd_price
-   */
-  private normalizeToUSD(price: number, pool: DexPool): number | null {
-    const quoteIsToken1 =
-      pool.quoteTokenAddress === pool.token1.address.toLowerCase();
- 
-    const quoteToken  = quoteIsToken1 ? pool.token1 : pool.token0;
-    const quoteSym    = canonicalSymbol(quoteToken);
-    const quoteUsd    = this.priceCache.getPrice(quoteSym);
- 
-    // ✅ Only proceed if we have a real cached price (getPrice returns 1 as fallback)
-    // We detect the fallback by checking both canonical symbols
-    const sym0 = canonicalSymbol(pool.token0);
-    const sym1 = canonicalSymbol(pool.token1);
-    const p0   = this.priceCache.getPrice(sym0);
-    const p1   = this.priceCache.getPrice(sym1);
- 
-    // At least one must be a known stable/wrapped with real price
-    if (!p0 && !p1) return null;
- 
-    if (quoteIsToken1 && p1) return price * p1;
-    if (!quoteIsToken1 && p0) return (1 / price) * p0;
- 
-    return null;
-  }
 
+    this.logger.log(`👂 V3 listening ${pool.token0.symbol}/${pool.token1.symbol} ${pool.poolKey}`);
+  }
 }
+
+
+
+
+
+
+
+
+//final without kafka redis
+
+// @Injectable()
+// export class UniswapV3Adapter {
+
+//   private logger = new Logger(UniswapV3Adapter.name);
+
+//   constructor(
+//     private readonly ethProvider: EthereumProvider,
+//     private readonly aggregationService: AggregationService,
+//     private readonly priceCache: PriceCacheService,
+//     private readonly liquidity: SharedLiquidityService,
+//   ) {}
+
+
+//   async normalize(symbol: string) {
+//     return TOKEN_ALIAS[symbol] || symbol;
+//   }
+
+
+// // ------------------------------------------------------------------
+//   // BATCH INIT  (multicall balances for all pools at startup)
+//   // ------------------------------------------------------------------
+//   async initializePools(pools: DexPool[], _chain: string) {
+//     // Delegate entirely to shared service
+//     await this.liquidity.initializePools(pools);
+//   }
+ 
+//   // ------------------------------------------------------------------
+//   // LIVE LISTENER  (one contract per pool)
+//   // ------------------------------------------------------------------
+//   start(pool: DexPool, marketId: number, baseSymbol: string) {
+//     const provider = this.ethProvider.getProvider();
+ 
+//     const contract = new ethers.Contract(
+//       pool.poolKey,
+//       UNISWAP3_POOL_ABI,
+//       provider
+//     );
+ 
+//     // ---- SWAP -------------------------------------------------------
+//     contract.on("Swap", async (...args) => {
+//       try {
+//         // args: [sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick]
+//         const sqrtPriceX96 = args[4] as bigint;
+ 
+//         // ✅ formatUnits here — these are raw int256 from the contract
+//         const amount0 = Number(formatUnits(args[2], pool.token0.decimals));
+//         const amount1 = Number(formatUnits(args[3], pool.token1.decimals));
+//         const price = OnchainUtil.sqrtPriceToPrice(
+//           sqrtPriceX96,
+//           pool.token0.decimals,
+//           pool.token1.decimals
+//         );
+
+//         let usdPrice
+//         if (price != null)  {   
+//          usdPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache)
+// console.log("swap v3",usdPrice)
+//         if (!usdPrice || usdPrice <= 0) return;
+//         pool.price = usdPrice;
+//         }
+//         // ✅ Volume: use the base token's absolute amount
+//         // quoteTokenAddress tells us which side is quote, other side is base
+//         const baseIsToken0 = pool.quoteTokenAddress === pool.token1.address.toLowerCase();
+//         const baseVolume   = baseIsToken0 ? Math.abs(amount0) : Math.abs(amount1);
+ 
+//         // Safety: base symbol must match the market we're updating
+//         const actualBase = canonicalSymbol(baseIsToken0 ? pool.token0 : pool.token1);
+//         if (actualBase !== baseSymbol) {
+//           this.logger.warn(`Base mismatch: expected ${baseSymbol} got ${actualBase} pool=${pool.poolKey}`);
+//           return;
+//         }
+ 
+//         this.aggregationService.handleLiveCandle(marketId, Exchange.UNISWAP_V3, {
+//           exchange: Exchange.UNISWAP_V3,
+//           openTime: Date.now(),
+//           open:     usdPrice,
+//           high:     usdPrice,
+//           low:      usdPrice,
+//           close:    usdPrice,
+//           volume:   baseVolume,
+//           quote:    'USD',
+//           isFinal:  false,
+//         });
+ 
+//         pool.lastSwapAt = Date.now();
+//         pool.volume24h += baseVolume;
+//         pool.score      = (pool.liquidityUsd ?? 0) * 0.7 + (pool.volume24h ?? 0) * 0.3;
+ 
+//         // ✅ Pass already-formatted amounts — no further decimal division in service
+//         await this.liquidity.updateFromSwap(pool, amount0, amount1);
+ 
+//       } catch (err) {
+//         this.logger.error(`Swap error ${pool.poolKey}`, err);
+//       }
+//     });
+ 
+//     // ---- MINT -------------------------------------------------------
+//     contract.on("Mint", async (...args) => {
+//       try {
+//         // args: [sender, owner, tickLower, tickUpper, amount, amount0, amount1]
+//         // amount0/amount1 are raw uint256
+//         const amount0 = Number(formatUnits(args[5], pool.token0.decimals));
+//         const amount1 = Number(formatUnits(args[6], pool.token1.decimals));
+
+//         await this.liquidity.updateFromMint(pool, amount0, amount1);
+//       } catch (err) {
+//         this.logger.error(`Mint error ${pool.poolKey}`, err);
+//       }
+//     });
+ 
+//     // ---- BURN -------------------------------------------------------
+//     contract.on("Burn", async (...args) => {
+//       try {
+
+//         // args: [owner, tickLower, tickUpper, amount, amount0, amount1]
+//         const amount0 = Number(formatUnits(args[4], pool.token0.decimals));
+//         const amount1 = Number(formatUnits(args[5], pool.token1.decimals));
+
+//         await this.liquidity.updateFromBurn(pool, amount0, amount1);
+//       } catch (err) {
+//         this.logger.error(`Burn error ${pool.poolKey}`, err);
+//       }
+//     });
+ 
+//     this.logger.log(`👂 V3 listening ${pool.poolKey}`);
+//   }
+ 
+
+
+// }
 
 
 

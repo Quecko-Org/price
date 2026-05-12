@@ -1,4 +1,4 @@
-export const STABLES = ["USDT", "USDC", "DAI", "TUSD", "FDUSD", "BUSD"];
+export const STABLES = ["USDT", "USDC", "DAI", "TUSD", "FDUSD", "BUSD" ,"USD"];
 
 export const WRAPPED = ["WBTC", "WETH"];
 export const BASE_TOKEN=["USDT", "USDC", "WETH"];
@@ -9,7 +9,7 @@ export const TOKEN_ALIAS: Record<string, string> = {
   };
   
   export const NATIVE_ETH_ADDRESS = "0x0000000000000000000000000000000000000000";
-  export const QUOTE_SYMBOLS = new Set([
+  export const QUOTE_SYMBOLS = new Set([ 
     "USDT", "USDC", "DAI", "TUSD", "FDUSD", "BUSD", // stables = direct USD
     "nativeETH",   // native ETH (V4 address(0)) — priced via CEX
     "WETH",  // WETH ERC-20 (V3 mainly)  — priced via CEX ETH price

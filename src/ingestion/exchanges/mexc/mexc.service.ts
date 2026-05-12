@@ -4,6 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { ExchangeTicker, OrderBookDepth } from '@/ingestion/exchanges/exchange-market-data.interface';
 
 
 @Injectable()
@@ -30,7 +31,7 @@ export class MexcService {
       this.logger.error(`Error fetching price for ${symbol}: ${error}`);
       throw error;
     }
-  }
+  } 
   async fetchAndStoreSymbols() {
     const res = await axios.get(`${this.baseUrl}/exchangeInfo`);
     let apiSymbols = res.data.symbols
@@ -41,6 +42,8 @@ export class MexcService {
         quote: s.quoteAsset,
         // status: s.status
       }));
+      console.log("mexc symbol data",apiSymbols[0],apiSymbols.length)
+     
 
     await this.symbolsService.syncExchangeSymbols(Exchange.MEXC, apiSymbols);
 
@@ -71,69 +74,7 @@ export class MexcService {
   //   return new Date(candles[0].openTime);
   // }
 
-  async s(symbol: string): Promise<Date> {
-
-    const response = await axios.get(
-      'https://www.okx.com/api/v5/market/history-candles',
-      {
-        params: {
-          after: "1564893002000",
-          instId: 'BTC-USDT',
-          bar: '1m',
-          limit: 2,
-        },
-      },
-    );
-
-    const candles = response.data?.data ?? [];
-    console.log("ccc", candles)
-    // if (!candles.length) 
-
-    // OKX returns newest → oldest
-    const firstCandle = candles[candles.length - 1];
-    // console.log("ccc",firstCandle)
-
-    return firstCandle[0];
-    //   let low = Date.parse("2018-01-01T00:00:00Z"); // very early timestamp
-    //   let high = Date.now();
-    //   let found;
-
-    //   while (low <= high) {
-    //     const mid = Math.floor((low + high) / 2); // ✅ use Math.floor, not >>
-
-    //     const { data } = await axios.get(`${this.baseUrl}/klines`, {
-    //       params: { symbol, interval: "1m", startTime: mid, limit: 1 }
-    //     });
-
-    //     if (data.length) {
-    //       console.log("mex service fetchFirstCandleTime ",mid,low,high,data)
-
-    //       found = data[0];
-    //       high = mid - 1; // go earlier
-    //     } else {
-    //       low = mid + 1;  // go later
-    //     }
-
-
-    //     // small delay to avoid rate limits
-    //     await new Promise(r => setTimeout(r, 50));
-    //   }
-
-    //   if (!found) throw new Error("No candle found for this symbol.");
-    // return new Date()
-    // const res = await axios.get(`${this.baseUrl}/klines`, {
-    //   params: {
-    //     symbol,
-    //     interval: '1m',
-    //     startTime: 1517731885,
-    //     limit: 1,
-    //   },
-    // });
-
-    // console.log("mex service fetchFirstCandleTime ",res.data)
-    //   return new Date(res.data[0][0]); // openTime
-  }
-
+ 
 
   async getKlines(symbol: string, interval = '1m', limit = 100) {
     const response = await axios.get(`${this.baseUrl}/klines`, {
@@ -149,6 +90,93 @@ export class MexcService {
       closeTime: new Date(k[6]),
     }));
   }
+
+
+
+
+
+// ── NEW: BATCH TICKER ─────────────────────────────────────
+  //
+  // MEXC /ticker/24hr returns all symbols.
+  // Note: MEXC doesn't include bid/ask in ticker — we use bookTicker.
+  async fetchAllTickers(): Promise<ExchangeTicker[]> {
+    try {
+      const [tickerRes, bookRes] = await Promise.all([
+        axios.get(`${this.baseUrl}/ticker/24hr`),
+        axios.get(`${this.baseUrl}/ticker/bookTicker`),
+      ]);
+ 
+      // Build bid/ask map from bookTicker
+      const bookMap = new Map<string, { bid: number; ask: number }>();
+      for (const b of (bookRes.data as any[])) {
+        bookMap.set(b.symbol, {
+          bid: parseFloat(b.bidPrice),
+          ask: parseFloat(b.askPrice),
+        });
+      }
+ 
+      return (tickerRes.data as any[])
+        // .filter(t => t.symbol.endsWith('USDT'))
+        .map(t => {
+          const book = bookMap.get(t.symbol);
+          return {
+            symbol:         t.symbol,
+            lastPrice:      parseFloat(t.lastPrice),
+            priceChange24h: parseFloat(t.priceChangePercent),
+            high24h:        parseFloat(t.highPrice),
+            low24h:         parseFloat(t.lowPrice),
+            volume24hBase:  parseFloat(t.volume),
+            volume24hQuote: parseFloat(t.quoteVolume),
+            bidPrice:       book?.bid ?? parseFloat(t.lastPrice),
+            askPrice:       book?.ask ?? parseFloat(t.lastPrice),
+          };
+        });
+    } catch (err) {
+      this.logger.error('MEXC fetchAllTickers failed', err);
+      return [];
+    }
+  }
+ 
+  // ── NEW: ORDER BOOK DEPTH ─────────────────────────────────
+  async fetchDepth(symbol: string, midPrice: number): Promise<OrderBookDepth | null> {
+    try {
+      const res  = await axios.get(`${this.baseUrl}/depth`, {
+        params: { symbol, limit: 100 },
+      });
+ 
+      const threshold = midPrice * 0.02;
+ 
+      let bidDepth = 0;
+      for (const [price, qty] of res.data.bids as [string, string][]) {
+        const p = parseFloat(price);
+        if (midPrice - p > threshold) break;
+        bidDepth += p * parseFloat(qty);
+      }
+ 
+      let askDepth = 0;
+      for (const [price, qty] of res.data.asks as [string, string][]) {
+        const p = parseFloat(price);
+        if (p - midPrice > threshold) break;
+        askDepth += p * parseFloat(qty);
+      }
+ 
+      return { symbol, bidDepth2pct: bidDepth, askDepth2pct: askDepth };
+    } catch (err) {
+      this.logger.error(`MEXC fetchDepth ${symbol} failed`, err);
+      return null;
+    }
+  }
+
+  
+
+
+
+
+
+
+
+
+
 
 
 

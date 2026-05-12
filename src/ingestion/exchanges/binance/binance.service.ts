@@ -1,4 +1,5 @@
 import { Exchange } from '@/common/enums/exchanges.enums';
+import { ExchangeTicker, OrderBookDepth } from '@/ingestion/exchanges/exchange-market-data.interface';
 import { SymbolsService } from '@/ingestion/symbols/symbol.service';
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
@@ -35,7 +36,7 @@ export class BinanceService {
         base: s.baseAsset,
         quote: s.quoteAsset,
       }));
-  
+      console.log("binance symbol data",apiSymbols[0],apiSymbols.length)
     await this.symbolsService.syncExchangeSymbols(
       Exchange.BINANCE,
       apiSymbols,
@@ -80,19 +81,86 @@ export class BinanceService {
 
 
 
-
   async getKlines(symbol: string, interval = '1m', limit = 100) {
-    const response = await axios.get(`${this.baseUrl}/klines`, {
+    const res = await axios.get(`${this.baseUrl}/klines`, {
       params: { symbol, interval, limit },
     });
-    return response.data.map((k) => ({
-      openTime: new Date(k[0]),
-      open: parseFloat(k[1]),
-      high: parseFloat(k[2]),
-      low: parseFloat(k[3]),
-      close: parseFloat(k[4]),
-      volume: parseFloat(k[5]),
+    return res.data.map((k: any) => ({
+      openTime:  new Date(k[0]),
+      open:      parseFloat(k[1]),
+      high:      parseFloat(k[2]),
+      low:       parseFloat(k[3]),
+      close:     parseFloat(k[4]),
+      volume:    parseFloat(k[5]),
       closeTime: new Date(k[6]),
     }));
   }
+
+    // ── NEW: BATCH TICKER (all USDT symbols in one call) ─────
+  //
+  // Binance /ticker/24hr returns ALL symbols in ~150ms.
+  // Way faster than individual calls per symbol.
+  // Returns price, 24h stats, bid/ask for every symbol.
+  async fetchAllTickers(): Promise<ExchangeTicker[]> {
+    try {
+      const res  = await axios.get(`${this.baseUrl}/ticker/24hr`);
+      const data = res.data as any[];
+//  console.log("h",data)
+      return data
+        // .filter(t => t.symbol.endsWith('USDT'))
+        .map(t => ({
+          symbol:         t.symbol,
+          lastPrice:      parseFloat(t.lastPrice),
+          priceChange24h: parseFloat(t.priceChangePercent),
+          high24h:        parseFloat(t.highPrice),
+          low24h:         parseFloat(t.lowPrice),
+          volume24hBase:  parseFloat(t.volume),      // base token volume
+          volume24hQuote: parseFloat(t.quoteVolume), // USDT volume
+          bidPrice:       parseFloat(t.bidPrice),
+          askPrice:       parseFloat(t.askPrice),
+        }));
+    } catch (err) {
+      this.logger.error('Binance fetchAllTickers failed', err);
+      return [];
+    }
+  }
+
+   // ── NEW: ORDER BOOK DEPTH ─────────────────────────────────
+  //
+  // Fetches top N levels of the order book and sums USD value
+  // of bids/asks within 2% of the mid price.
+  // Only call this for liquid symbols — rate limit is 1200/min.
+  async fetchDepth(symbol: string, midPrice: number): Promise<OrderBookDepth | null> {
+    try {
+      const res  = await axios.get(`${this.baseUrl}/depth`, {
+        params: { symbol, limit: 100 }, // top 100 levels
+      });
+ 
+      const bids: [string, string][] = res.data.bids;
+      const asks: [string, string][] = res.data.asks;
+ 
+      const threshold = midPrice * 0.02; // 2% band
+ 
+      let bidDepth = 0;
+      for (const [price, qty] of bids) {
+        const p = parseFloat(price);
+        if (midPrice - p > threshold) break; // outside 2% band
+        bidDepth += p * parseFloat(qty);     // USD value
+      }
+ 
+      let askDepth = 0;
+      for (const [price, qty] of asks) {
+        const p = parseFloat(price);
+        if (p - midPrice > threshold) break;
+        askDepth += p * parseFloat(qty);
+      }
+ 
+      return { symbol, bidDepth2pct: bidDepth, askDepth2pct: askDepth };
+    } catch (err) {
+      this.logger.error(`Binance fetchDepth ${symbol} failed`, err);
+      return null;
+    }
+  }
+ 
+
 }

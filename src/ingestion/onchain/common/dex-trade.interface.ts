@@ -1,4 +1,4 @@
-import { Chain } from "./chain.enum";
+import { Chain } from "./chain.config";
 import { Dex } from "./dex.enum";
 
 export interface DexTrade {

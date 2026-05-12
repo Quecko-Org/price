@@ -8,7 +8,7 @@ import {
   Index,
 } from 'typeorm';
 import { Token } from './token.entity';
-import { Chain, DexType } from '../chain.enum';
+import { Chain, DexType } from '../chain.config';
 
 /* =========================
    ENUMS (IMPORTANT)

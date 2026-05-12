@@ -108,6 +108,51 @@ export class MarketsRepository {
 
 
   }
+  
+  // // ── ON-DEMAND: get exchange stats for a single symbol ─────
+  // // Called by the API controller for /markets/:symbol/exchange-stats
+  // async getExchangeStats(symbolStr: string) {
+  //   const symbol = await this.symbolRepo.findOne({
+  //     where: { base: symbolStr },
+  //   });
+  //   if (!symbol) return [];
+
+  //   // Try Redis first (fast path)
+  //   const exchanges = [Exchange.BINANCE, Exchange.MEXC, Exchange.OKX];
+  //   const results = await Promise.all(
+  //     exchanges.map(async ex => {
+  //       const cached = await this.redis.get(
+  //         `exchange:ticker:${ex}:${symbol.symbol}`
+  //       );
+  //       if (cached) return { exchange: ex, ...JSON.parse(cached) };
+
+  //       // Redis miss — read from DB
+  //       const row = await this.seRepo.findOne({
+  //         where: { exchange: ex, symbol: { id: symbol.id } },
+  //         relations: ['symbol'],
+  //       });
+  //       if (!row || !row.lastPrice) return null;
+
+  //       return {
+  //         exchange: ex,
+  //         price: row.lastPrice,
+  //         change24h: row.priceChange24h,
+  //         high24h: row.high24h,
+  //         low24h: row.low24h,
+  //         volume24hBase: row.volume24hBase,
+  //         volume24hUsd: row.volume24hUsd,
+  //         bid: row.bidPrice,
+  //         ask: row.askPrice,
+  //         spread: row.spreadPct,
+  //         depthBid2pct: row.depthBid2pct,
+  //         depthAsk2pct: row.depthAsk2pct,
+  //         updatedAt: row.updatedAt,
+  //       };
+  //     })
+  //   );
+
+  //   return results.filter(Boolean);
+  // }
 
 
 

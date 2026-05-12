@@ -8,6 +8,7 @@ import { ExchangesModule } from '@/ingestion/exchanges/exchanges.module';
 import { SymbolsModule } from '@/ingestion/symbols/symbols.module';
 import { SymbolExchangeEntity } from '@/ingestion/symbols/entities/symbol-exchange.entity';
 import { MarketEntity } from '@/market-data/market.entity';
+import { AggregationConsumer } from './aggregation.consumer';
 
 @Global()
 @Module({
@@ -20,7 +21,7 @@ import { MarketEntity } from '@/market-data/market.entity';
       forwardRef(() => ExchangesModule), // ✅ FIX
       SymbolsModule
     ],
-    providers: [AggregationService],
-    exports: [AggregationService], 
+    providers: [AggregationService,AggregationConsumer],
+    exports: [AggregationService,AggregationConsumer], 
   })
   export class AggregationModule {}
