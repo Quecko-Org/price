@@ -4,7 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { ExchangeTicker, OrderBookDepth } from '@/ingestion/exchanges/exchange-market-data.interface';
+import { ExchangeTicker, OrderBookDepth } from '@/ingestion/symbols/exchange-market-data.interface';
 
 
 @Injectable()

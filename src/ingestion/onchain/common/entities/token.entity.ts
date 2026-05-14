@@ -10,7 +10,7 @@ export class Token {
   @Index()
   chain: string;
 
-  @Column({ type: 'text', unique: true })
+  @Column({ type: 'text'})
   address: string;
 
   @Column({ type: 'text' })

@@ -1,5 +1,5 @@
 import { Exchange } from '@/common/enums/exchanges.enums';
-import { ExchangeTicker, OrderBookDepth } from '@/ingestion/exchanges/exchange-market-data.interface';
+import { ExchangeTicker, OrderBookDepth } from '@/ingestion/symbols/exchange-market-data.interface';
 import { SymbolsService } from '@/ingestion/symbols/symbol.service';
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';

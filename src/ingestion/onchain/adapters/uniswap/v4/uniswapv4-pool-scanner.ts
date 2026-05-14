@@ -69,7 +69,7 @@ export class UniswapV4DiscoveryService {
   async listen(chainId: Chain, provider: ethers.WebSocketProvider) {
     await this.init(chainId);
 
-    const config = CHAIN_CONFIGS[chainId];
+    const config = CHAIN_CONFIGS[1];
 
     provider.on(
       { address: config.uniswapV4PoolManager, topics: [INIT_EVENT_TOPIC] },
@@ -84,8 +84,8 @@ export class UniswapV4DiscoveryService {
 
   // ── Historical backfill ───────────────────────────────────────
   async backfill(chainId: Chain, provider: ethers.WebSocketProvider) {
-    await this.init(chainId);
 
+    await this.init(chainId);
     const config    = CHAIN_CONFIGS[chainId];
     const fromBlock = V4_START_BLOCKS[chainId];
 
@@ -120,6 +120,7 @@ export class UniswapV4DiscoveryService {
         }
 
       } catch (err) {
+        console.log("asharrr",err)
         this.logger.error(`${config.name} backfill chunk ${start}-${end} failed`, err);
         await new Promise(r => setTimeout(r, 500));
       }
@@ -133,6 +134,9 @@ export class UniswapV4DiscoveryService {
   // ── Process a single Initialize log ──────────────────────────
   async processLog(log: ethers.Log, chainId: Chain) {
     const poolId    = log.topics[1];
+    const exists = await this.poolRepo.findOne({ where: { poolKey: poolId,chainId } });
+    if (exists) return;
+
     const currency0 = ethers.getAddress("0x" + log.topics[2].slice(26));
     const currency1 = ethers.getAddress("0x" + log.topics[3].slice(26));
 
@@ -148,8 +152,6 @@ export class UniswapV4DiscoveryService {
     const sides = getPoolSides(t0, t1);
     if (!sides) return;
 
-    const exists = await this.poolRepo.findOne({ where: { poolKey: poolId } });
-    if (exists) return;
 
     const [fee, tickSpacing, hooks] =
       ethers.AbiCoder.defaultAbiCoder().decode(

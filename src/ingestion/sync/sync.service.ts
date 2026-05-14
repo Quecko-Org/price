@@ -34,7 +34,7 @@ import { OkxService } from '@/ingestion/exchanges/okx/okx.service';
 import { Exchange } from '@/common/enums/exchanges.enums';
 import { PriceCacheService } from '@/common-module/price-cache-service/price-cache.service';
 import { RedisService } from '@/common-module/redis/redis.service';
-import { ExchangeTicker } from '../exchanges/exchange-market-data.interface';
+import { ExchangeTicker } from '../symbols/exchange-market-data.interface';
 
 // Only fetch depth for top N symbols by volume — rest get null depth
 const DEPTH_SYMBOL_LIMIT = 50;
@@ -76,7 +76,7 @@ export class MarketDataSyncService {
   }
   // ── TICKER REFRESH — every 60 seconds ────────────────────
   // One batch call per exchange → write to DB + Redis
-  //  @Cron('0 * * * * *') // every 60s at :00
+   @Cron('0 * * * * *') // every 60s at :00
   async syncTickers() {
     await Promise.all([
       // this.syncExchangeTickers(Exchange.BINANCE, () => this.binance.fetchAllTickers()),
@@ -86,7 +86,7 @@ export class MarketDataSyncService {
   }
 
   // ── DEPTH REFRESH — every 5 minutes, top 50 symbols ──────
-  // @Cron('0 */3 * * * *') // every 5 min at :00
+  @Cron('0 */5 * * * *') // every 5 min at :00
   async syncDepth() {
     await Promise.all([
       // this.syncExchangeDepth(Exchange.BINANCE, (sym, mid) => this.binance.fetchDepth(sym, mid)),

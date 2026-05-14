@@ -83,7 +83,7 @@ export class MarketDataService implements OnModuleInit {
 
       // this.logger.log(`Launching Binance WS (${chunk.length} symbols)`);
 
-      // this.binanceWs.connect(chunk, symbolMarketMap, symbolMetaMap);
+      this.binanceWs.connect(chunk, symbolMarketMap, symbolMetaMap);
     }
 
     /*
@@ -104,7 +104,7 @@ export class MarketDataService implements OnModuleInit {
 
       // this.logger.log(`Launching MEXC WS (${chunk.length} symbols)`);
 
-      // this.mexcWs.connect(chunk, symbolMarketMap, symbolMetaMap);
+      this.mexcWs.connect(chunk, symbolMarketMap, symbolMetaMap);
     }
 
 
@@ -123,7 +123,7 @@ export class MarketDataService implements OnModuleInit {
     const OKX_CHUNK = 100;
 
     for (let i = 0; i < okxSymbols.length; i += OKX_CHUNK) {
-      // this.okxWs.connect(okxSymbols.slice(i, i + OKX_CHUNK), symbolMarketMap, symbolMetaMap);
+      this.okxWs.connect(okxSymbols.slice(i, i + OKX_CHUNK), symbolMarketMap, symbolMetaMap);
     }
 
     this.logger.log(

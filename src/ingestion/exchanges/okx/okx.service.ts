@@ -7,7 +7,7 @@ import { STABLES } from '@/ingestion/onchain/common/common-tokens';
 import { SymbolsService } from '@/ingestion/symbols/symbol.service';
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
-import { ExchangeTicker, OrderBookDepth } from '../exchange-market-data.interface';
+import { ExchangeTicker, OrderBookDepth } from '../../symbols/exchange-market-data.interface';
 
 const BASE = 'https://www.okx.com/api/v5';
 
