@@ -21,7 +21,6 @@ import { DexType, CHAIN_CONFIGS, Chain } from "../../../common/chain.config";
 import { OnchainUtil } from "@/ingestion/onchain/common/onchain.utils";
 import { DexAutoMapperService } from "@/ingestion/onchain/common/ingestion-cron/token-syncing/dex-auto-mapper.service";
 import { ChainProviderFactory } from "../../../providers/provider.factory";
-
 // ── Shared ABIs ─────────────────────────────────────────────
 const ERC20_IFACE = new ethers.Interface([
   "function balanceOf(address) view returns (uint256)",
@@ -188,7 +187,7 @@ export class SharedLiquidityService {
   private async fetchTVLFromSubgraph(pools: DexPool[], chainId: Chain) {
     const config   = CHAIN_CONFIGS[chainId];
     const subgraphId = config?.subgraphV4Id;
-    const apiKey   = process.env.GRAPH_API_KEY;
+    const apiKey   = "069891b5ca120b29736ac9de3803bc52";
 
     if (!apiKey || !subgraphId || subgraphId.includes('_SUBGRAPH_ID')) {
       this.logger.warn(
@@ -222,6 +221,7 @@ export class SharedLiquidityService {
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify({ query }),
         });
+        // console.log("ksss",res)
         const json = await res.json();
 
         if (json.errors) {
@@ -393,7 +393,7 @@ export class SharedLiquidityService {
 /*without multichain  */
 
 // // ── Constants ────────────────────────────────────────────────
-// const CHUNK_SIZE        = 100;
+// const CHUNK_SIZE        = 100;ƒ√
 // const MULTICALL_ADDRESS = "0xcA11bde05977b3631167028862bE2a173976CA11";
 // const DEFAULT_STATE_VIEW = "0x7ffe42c4a5deea5b0fec41c94c136cf115597227";
 

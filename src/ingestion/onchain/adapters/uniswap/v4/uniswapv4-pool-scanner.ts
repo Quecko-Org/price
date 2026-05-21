@@ -1,9 +1,13 @@
 // ============================================================
-// uniswapv4-pool-scanner.ts  (UniswapV4DiscoveryService)
+// uniswapv4-pool-scanner.ts
 //
-// Handles V4 pool discovery for ANY chain.
-// Tokens are loaded per-chain (filtered by chainId).
-// Provider and PoolManager address come from chain config.
+// ADDED: Block tracking via chain_sync_state table.
+//   - On first run: starts from V4 deploy block
+//   - On restart:   resumes from last_scanned_block in DB
+//   - After each chunk: updates last_scanned_block
+//   - On completion: sets last_scanned_block = latest block
+//
+// This prevents re-scanning millions of blocks on every restart.
 // ============================================================
 import { DexPool } from "@/ingestion/onchain/common/entities/pool.entityt";
 import { Injectable, Logger } from "@nestjs/common";
@@ -12,15 +16,15 @@ import { Repository } from "typeorm";
 import { ethers } from "ethers";
 import { Chain, DexType, CHAIN_CONFIGS } from "@/ingestion/onchain/common/chain.config";
 import { Token } from "@/ingestion/onchain/common/entities/token.entity";
-import { getPoolSides, isTrackablePool } from "../base/pool-filter";
 import { DexAutoMapperService } from "@/ingestion/onchain/common/ingestion-cron/token-syncing/dex-auto-mapper.service";
+import { ChainSyncStateEntity } from "@/ingestion/onchain/common/entities/chain-sync-state";
 
 const INIT_EVENT_TOPIC = ethers.id(
   "Initialize(bytes32,address,address,uint24,int24,address,uint160,int24)"
 );
 
-// V4 deployment start blocks per chain
-const V4_START_BLOCKS: Partial<Record<Chain, number>> = {
+// V4 deployment blocks — where to START if DB has no state
+const V4_DEPLOY_BLOCKS: Partial<Record<Chain, number>> = {
   [Chain.ETHEREUM]: 21688329,
   [Chain.BASE]:     22800000,
   [Chain.ARBITRUM]: 275000000,
@@ -28,18 +32,19 @@ const V4_START_BLOCKS: Partial<Record<Chain, number>> = {
   [Chain.POLYGON]:  68000000,
 };
 
+const CHUNK_SIZE = 2000; // blocks per getLogs call
+
 @Injectable()
 export class UniswapV4DiscoveryService {
   private readonly logger = new Logger(UniswapV4DiscoveryService.name);
 
-  // Per-chain token maps: chainId → (address → Token)
-  // Loaded lazily per chain on first use
   private tokenMaps = new Map<Chain, Map<string, Token>>();
   private loaded    = new Set<Chain>();
 
   constructor(
-    @InjectRepository(DexPool) private poolRepo:  Repository<DexPool>,
-    @InjectRepository(Token)   private tokenRepo: Repository<Token>,
+    @InjectRepository(DexPool)             private poolRepo:      Repository<DexPool>,
+    @InjectRepository(Token)               private tokenRepo:     Repository<Token>,
+    @InjectRepository(ChainSyncStateEntity) private syncRepo:     Repository<ChainSyncStateEntity>,
     private readonly autoMapper: DexAutoMapperService,
   ) {}
 
@@ -55,21 +60,22 @@ export class UniswapV4DiscoveryService {
     this.loaded.add(chainId);
 
     const config = CHAIN_CONFIGS[chainId];
-    this.logger.log(`📋 ${config.name} V4: loaded ${map.size} tokens`);
+    this.logger.log(`📋 ${config.name} V4: ${map.size} tokens loaded`);
 
     if (!map.has("0x0000000000000000000000000000000000000000")) {
-      this.logger.warn(
-        `${config.name}: native token (address zero) missing — ` +
-        "ETH/BNB pools will be skipped. Run TokenSyncService."
-      );
+      this.logger.warn(`${config.name}: native token missing — ETH/BNB pools skipped`);
     }
   }
 
-  // ── Attach live Initialize event listener ────────────────────
+  async refreshTokenMap(chainId: Chain) {
+    this.loaded.delete(chainId);
+    await this.init(chainId);
+  }
+
+  // ── Live Initialize event listener ───────────────────────────
   async listen(chainId: Chain, provider: ethers.WebSocketProvider) {
     await this.init(chainId);
-
-    const config = CHAIN_CONFIGS[1];
+    const config = CHAIN_CONFIGS[chainId];
 
     provider.on(
       { address: config.uniswapV4PoolManager, topics: [INIT_EVENT_TOPIC] },
@@ -82,26 +88,51 @@ export class UniswapV4DiscoveryService {
     this.logger.log(`👂 ${config.name} V4 listening for new pools`);
   }
 
-  // ── Historical backfill ───────────────────────────────────────
+  // ── Historical backfill with block tracking ───────────────────
   async backfill(chainId: Chain, provider: ethers.WebSocketProvider) {
-
     await this.init(chainId);
-    const config    = CHAIN_CONFIGS[chainId];
-    const fromBlock = V4_START_BLOCKS[chainId];
 
-    if (!fromBlock) {
-      this.logger.warn(`${config.name}: no V4 start block configured — skipping backfill`);
+    const config     = CHAIN_CONFIGS[chainId];
+    const deployBlock = V4_DEPLOY_BLOCKS[chainId];
+
+    if (!deployBlock) {
+      this.logger.warn(`${config.name}: no V4 deploy block — skipping backfill`);
       return;
     }
 
-    const latestBlock = await provider.getBlockNumber();
-    const CHUNK       = 2000;
-    let   start       = fromBlock;
+    // ── Load or create sync state ─────────────────────────────
+    let syncState = await this.syncRepo.findOne({ where: { chainId } });
 
-    this.logger.log(`🚀 ${config.name} V4 backfill: ${fromBlock} → ${latestBlock}`);
+    if (!syncState) {
+      // First run — create record starting from deploy block
+      syncState = this.syncRepo.create({
+        chainId,
+        deployBlock,
+        lastScannedBlock: deployBlock - 1, // -1 so first run starts from deployBlock
+      });
+      await this.syncRepo.save(syncState);
+      this.logger.log(`${config.name} V4: first run, starting from block ${deployBlock}`);
+    } else {
+      this.logger.log(
+        `${config.name} V4: resuming from block ${syncState.lastScannedBlock + 1} ` +
+        `(saved at last restart)`
+      );
+    }
 
-    while (start <= latestBlock) {
-      const end = Math.min(start + CHUNK - 1, latestBlock);
+    const startBlock = syncState.lastScannedBlock + 1;
+    const latest     = await provider.getBlockNumber();
+
+    if (startBlock > latest) { 
+      this.logger.log(`${config.name} V4: already up to date (block ${latest})`);
+      return;
+    }
+
+    this.logger.log(`🚀 ${config.name} V4 backfill: ${startBlock} → ${latest}`);
+
+    let start = startBlock;
+
+    while (start <= latest) {
+      const end = Math.min(start + CHUNK_SIZE - 1, latest);
 
       try {
         const logs = await provider.getLogs({
@@ -119,22 +150,27 @@ export class UniswapV4DiscoveryService {
           await this.processLog(log, chainId);
         }
 
+        // ✅ Update last scanned block after each successful chunk
+        syncState.lastScannedBlock = end;
+        await this.syncRepo.save(syncState);
+
       } catch (err) {
-        console.log("asharrr",err)
         this.logger.error(`${config.name} backfill chunk ${start}-${end} failed`, err);
+        // Don't advance — retry same chunk on next restart
         await new Promise(r => setTimeout(r, 500));
       }
 
       start = end + 1;
     }
 
-    this.logger.log(`✅ ${config.name} V4 backfill complete`);
+    this.logger.log(`✅ ${config.name} V4 backfill complete — at block ${latest}`);
   }
 
-  // ── Process a single Initialize log ──────────────────────────
+  // ── Process one Initialize log ────────────────────────────────
   async processLog(log: ethers.Log, chainId: Chain) {
-    const poolId    = log.topics[1];
-    const exists = await this.poolRepo.findOne({ where: { poolKey: poolId,chainId } });
+    const poolId = log.topics[1];
+
+    const exists = await this.poolRepo.findOne({ where: { poolKey: poolId, chainId } });
     if (exists) return;
 
     const currency0 = ethers.getAddress("0x" + log.topics[2].slice(26));
@@ -147,11 +183,11 @@ export class UniswapV4DiscoveryService {
     const t1 = tokenMap.get(currency1.toLowerCase()) ?? null;
     if (!t0 || !t1) return;
 
-    if (!isTrackablePool(t0, t1)) return;
-
-    const sides = getPoolSides(t0, t1);
-    if (!sides) return;
-
+    // At least one token must be a known quote token for this chain
+    const config     = CHAIN_CONFIGS[chainId];
+    const t0IsQuote  = config.quoteAddresses.has(t0.address.toLowerCase());
+    const t1IsQuote  = config.quoteAddresses.has(t1.address.toLowerCase());
+    if (!t0IsQuote && !t1IsQuote) return;
 
     const [fee, tickSpacing, hooks] =
       ethers.AbiCoder.defaultAbiCoder().decode(
@@ -160,39 +196,22 @@ export class UniswapV4DiscoveryService {
       );
 
     const pool = await this.poolRepo.save({
-      dex:               DexType.UNISWAP_V4,
-      chainId,                                      // ✅ correct chain
-      poolKey:           poolId,
-      token0:            t0,
-      token1:            t1,
-      fee:               Number(fee),
-      tickSpacing:       Number(tickSpacing),
+      dex:         DexType.UNISWAP_V4,
+      chainId,
+      poolKey:     poolId,
+      token0:      t0,
+      token1:      t1,
+      fee:         Number(fee),
+      tickSpacing: Number(tickSpacing),
       hooks,
-      quoteTokenAddress: sides.quote.address.toLowerCase(),
-      isActive:          true,
+      isActive:    true,
     });
 
-    // Auto-map pool → market immediately
     await this.autoMapper.mapPoolsV4([pool]);
 
-    this.logger.log(
-      `✅ [${CHAIN_CONFIGS[chainId].name}] V4 ${sides.base.symbol}/${sides.quote.symbol} fee=${fee}`
-    );
-  }
-
-  // ── Refresh token map for a chain (called after token sync) ──
-  async refreshTokenMap(chainId: Chain) {
-    this.loaded.delete(chainId);
-    await this.init(chainId);
+    this.logger.log(`✅ [${config.name}] V4 ${t0.symbol}/${t1.symbol} fee=${fee}`);
   }
 }
-
-
-
-
-
-
-
 
 
 

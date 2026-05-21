@@ -18,7 +18,6 @@ export class OkxService {
 
   // Fetch all USDT spot pairs
   async fetchAndStoreSymbols() {
-    try {
         const allowedQuote = new Set(STABLES);
       const res  = await axios.get(`${BASE}/public/instruments`, {
         params: { instType: 'SPOT' },
@@ -32,15 +31,13 @@ export class OkxService {
           base:   i.baseCcy,            // BTC
           quote:  i.quoteCcy,           // USDT
         }));
+        console.log("symbolsData.length",symbolsData.length)
         await this.symbolsService.syncExchangeSymbols(
             Exchange.OKX,
-            symbolsData,
+            symbolsData,  
           );
-    } catch (err) {
-      this.logger.error('OKX fetchSymbols failed', err);
-      return [];
-    }
-  }
+ 
+  } 
  
   // Fetch earliest available 1m candle timestamp
   async fetchFirstCandleTime(symbol: string): Promise<number> {

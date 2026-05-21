@@ -56,8 +56,8 @@ export class KafkaService implements OnModuleInit,OnModuleDestroy {
     });
     await this.producer.connect();
     this.logger.log('✅ Kafka producer connected');
-  }
-
+  } 
+ 
   // ── CEX kline tick ─────────────────────────────────────────
   async publishCandle(marketId: number, exchange: Exchange, candle: ExchangeLiveCandle) {
     const msg: RawCandleMessage = { marketId, exchange, candle };

@@ -19,7 +19,7 @@ import { KafkaService } from '@/common-module/kafka/kafka.service';
 
 const OKX_WS_URL = 'wss://ws.okx.com:8443/ws/v5/business';
 
-@Injectable()
+@Injectable() 
 export class OkxWebSocket {
   private readonly logger = new Logger(OkxWebSocket.name);
   private sockets: WebSocket[] = [];
@@ -44,20 +44,20 @@ export class OkxWebSocket {
     ws.on('open', async() => {
       isAlive = true;
  
-      const BATCH_SIZE = 20;
+      const BATCH_SIZE = 10;
 
       for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
         const batch = symbols.slice(i, i + BATCH_SIZE);
     
-    
 
       ws.send(JSON.stringify({
         op: 'subscribe',
-        args: symbols.map(instId => ({
+        args: batch.map(instId => ({
           channel: 'candle1m',
           instId,
         })),
       }));
+
       await new Promise(r => setTimeout(r, 250));
     }
   
@@ -108,7 +108,7 @@ export class OkxWebSocket {
         for (const candle of msg.data) {
           // candle = [ts, open, high, low, close, vol, volCcy, volCcyQuote, confirm]
           const [ts, open, high, low, close, vol, , , confirm] = candle;
-
+// console.log("candlecandlecandle",candle)
           this.kafka.publishCandle(marketId, Exchange.OKX, {
             exchange: Exchange.OKX,
             openTime: Number(ts),
@@ -128,6 +128,8 @@ export class OkxWebSocket {
     });
     ws.on('close', () => {
       this.logger.warn('OKX WS closed — reconnecting in 3s');
+        this.sockets = this.sockets.filter(s => s !== ws);
+
       clearInterval(pingInterval);
       const delay = Math.min(30000, 1000 * 2 ** retry);
 

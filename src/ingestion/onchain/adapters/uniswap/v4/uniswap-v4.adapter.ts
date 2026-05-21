@@ -1,26 +1,19 @@
 // ============================================================
 // uniswap-v4.adapter.ts
 //
-// Singleton adapter that handles Swap/ModifyLiquidity for
-// ALL V4 chains. One PoolManager contract listener per chain.
-//
-// poolMap key: `${chainId}:${poolKey}` — prevents ETH pools
-// from colliding with ARB pools that share the same poolKey.
-//
-// start(chainId, provider) is idempotent — safe to call
-// multiple times (guarded by startedChains Set).
+// Singleton PoolManager listener handles ALL V4 pools on a chain.
+// Each pool maps to multiple markets via dex_market_maps.baseIsToken0.
 // ============================================================
 import { Injectable, Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
-import { EthereumProvider } from '../../../providers/ethereum.provider';
 import { DexPool } from '../../../common/entities/pool.entityt';
 import { PriceCacheService } from '@/common-module/price-cache-service/price-cache.service';
 import { Exchange } from '@/common/enums/exchanges.enums';
-import { canonicalSymbol } from '../base/pool-filter';
 import { SharedLiquidityService } from '../base/shared-liquidity.service';
 import { OnchainUtil } from '@/ingestion/onchain/common/onchain.utils';
 import { KafkaService } from '@/common-module/kafka/kafka.service';
 import { Chain, CHAIN_CONFIGS } from '@/ingestion/onchain/common/chain.config';
+import { PoolMarketMapping } from '../base/dex-adapter.interface';
 
 const POOL_MANAGER_ABI = [
   "event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)",
@@ -31,10 +24,8 @@ const POOL_MANAGER_ABI = [
 export class UniswapV4Adapter {
   private readonly logger = new Logger(UniswapV4Adapter.name);
 
-  // `${chainId}:${poolKey}` → { pool, marketIds }
-  private poolMap = new Map<string, { pool: DexPool; marketIds: number[] }>();
-
-  // Chains that already have a listener started
+  // `${chainId}:${poolKey}` → { pool, mappings[] }
+  private poolMap     = new Map<string, { pool: DexPool; mappings: PoolMarketMapping[] }>();
   private startedChains = new Set<Chain>();
 
   constructor(
@@ -43,42 +34,41 @@ export class UniswapV4Adapter {
     private readonly kafka:      KafkaService,
   ) {}
 
-  // ── Registration (called by V4OnchainService.registerPools) ──
-  register(chainId: Chain, pool: DexPool, marketIds: number[]) {
-    const key = this.key(chainId, pool.poolKey);
-    this.poolMap.set(key, { pool, marketIds });
+  register(chainId: Chain, pool: DexPool, mappings: PoolMarketMapping[]) {
+    console.log("register",chainId)
+    this.poolMap.set(`${chainId}:${pool.poolKey}`, { pool, mappings });
   }
 
   isRegistered(chainId: Chain, poolKey: string): boolean {
-    return this.poolMap.has(this.key(chainId, poolKey));
+    return this.poolMap.has(`${chainId}:${poolKey}`);
   }
 
-  // ── Initialize balances for pools (subgraph TVL + StateView) ─
-  async initializePools(pools: DexPool[], chainId: Chain) {
-    if (!pools.length) return;
-    // SharedLiquidityService routes by pool.dex and uses pool.chainId
-    // for chain-specific subgraph ID and StateView address
-    await this.liquidity.initializePools(pools);
+  async initializePools(pools: DexPool[], _chainId: Chain) {
+    if (pools.length) await this.liquidity.initializePools(pools);
   }
 
-  // ── Start singleton PoolManager listener for one chain ────────
   start(chainId: Chain, provider: ethers.WebSocketProvider) {
-    if (this.startedChains.has(chainId)) return; // idempotent
+    console.log("start v4444")
+    if (this.startedChains.has(chainId)) return;
     this.startedChains.add(chainId);
+    console.log("start v4444 a")
 
     const config   = CHAIN_CONFIGS[chainId];
     const contract = new ethers.Contract(
       config.uniswapV4PoolManager,
       POOL_MANAGER_ABI,
-      provider
+      provider,
     );
 
-    // ── SWAP ───────────────────────────────────────────────────
+    // ── SWAP ─────────────────────────────────────────────────────
     contract.on("Swap", async (poolId, _sender, a0Raw, a1Raw, sqrtPriceX96) => {
-      const entry = this.poolMap.get(this.key(chainId, poolId));
+      const entry = this.poolMap.get(`${chainId}:${poolId}`);
+      console.log("swaaap",poolId,entry,this.poolMap.size)
+
       if (!entry) return;
 
-      const { pool, marketIds } = entry;
+      const { pool, mappings } = entry;
+      if (!mappings.length) return;
 
       try {
         const amount0 = Number(ethers.formatUnits(a0Raw, pool.token0.decimals));
@@ -87,60 +77,52 @@ export class UniswapV4Adapter {
         const price = OnchainUtil.sqrtPriceToPrice(
           sqrtPriceX96,
           pool.token0.decimals,
-          pool.token1.decimals
+          pool.token1.decimals,
         );
         if (!price || price <= 0) return;
 
-        const usdPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache);
-        if (!usdPrice || usdPrice <= 0) return;
+        // Publish to ALL markets this pool serves
+        for (const m of mappings) {
+          const usdPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache, m.baseIsToken0);
+          if (!usdPrice || usdPrice <= 0) continue;
 
-        pool.price = usdPrice;
+          const baseVolume = m.baseIsToken0 ? Math.abs(amount0) : Math.abs(amount1);
+console.log("kafkaaaaaaaaaaaa v4")
 
-        const baseIsToken0 = pool.quoteTokenAddress === pool.token1.address.toLowerCase();
-        const baseVolume   = baseIsToken0 ? Math.abs(amount0) : Math.abs(amount1);
-
-        // Publish to Kafka — consumer aggregates with CEX ticks
-        for (const marketId of marketIds) {
           this.kafka.publishDexSwap({
-            marketId,
+            marketId:   m.marketId,
             exchange:   Exchange.UNISWAP_V4,
             priceUsd:   usdPrice,
             baseVolume,
             openTime:   Date.now(),
-          }).catch(err => this.logger.error(`${config.name} Kafka publish failed`, err));
+          }).catch(err => this.logger.error('Kafka publish failed', err));
         }
 
-        pool.volume24h = (pool.volume24h ?? 0) + baseVolume;
-        pool.score     = (pool.liquidityUsd ?? 0) * 0.7 + (pool.volume24h ?? 0) * 0.3;
+        // Pool-level stats
+        const first = mappings[0];
+        const displayPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache, first.baseIsToken0);
+        if (displayPrice) pool.price = displayPrice;
 
-        // Delta TVL tracking — swap doesn't change total TVL, only ratio
+        pool.volume24h  = (pool.volume24h ?? 0) + Math.abs(amount0);
+        pool.score      = (pool.liquidityUsd ?? 0) * 0.7 + (pool.volume24h ?? 0) * 0.3;
+        pool.lastSwapAt = Date.now();
+
         await this.liquidity.updateV4FromSwap(pool, amount0, amount1);
 
       } catch (err) {
-        this.logger.error(`${config.name} Swap error poolId=${poolId}`, err);
+        this.logger.error(`${config.name} Swap error ${poolId}`, err);
       }
     });
 
-    // ── MODIFY LIQUIDITY ───────────────────────────────────────
-    // LP add/remove — schedules subgraph re-sync after 60s debounce
+    // ── MODIFY LIQUIDITY ─────────────────────────────────────────
     contract.on("ModifyLiquidity", async (poolId) => {
-      const entry = this.poolMap.get(this.key(chainId, poolId));
+      const entry = this.poolMap.get(`${chainId}:${poolId}`);
       if (!entry) return;
       this.liquidity.scheduleV4Refresh(entry.pool);
     });
 
-    // Count registered pools for this chain
-    const chainPools = [...this.poolMap.keys()]
-      .filter(k => k.startsWith(`${chainId}:`)).length;
-
-    this.logger.log(
-      `👂 ${config.name} V4 adapter started — ${chainPools} pools registered`
-    );
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────
-  private key(chainId: Chain, poolKey: string): string {
-    return `${chainId}:${poolKey}`;
+    const count = [...this.poolMap.keys()].filter(k => k.startsWith(`${chainId}:`)).length;
+    this.logger.log(`👂 ${config.name} V4 started — ${count} pools`);
   }
 }
 

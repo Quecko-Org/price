@@ -1,16 +1,17 @@
 // ============================================================
 // uniswap-v3.adapter.ts
 //
-// Handles Swap/Mint/Burn events for V3 pools on ANY chain.
-// Provider is passed per-call (not injected) so the same
-// adapter instance works for Ethereum, BSC, Arbitrum etc.
+// One Swap listener per pool — publishes to ALL mapped markets.
 //
-// Changes from single-chain version:
-//   - start() accepts provider parameter (chain-specific WS)
-//   - initializePools() accepts provider parameter
-//   - Publishes to Kafka instead of calling AggregationService
-//   - Uses OnchainUtil for price math (shared with V4)
-//   - volume24h initialized to 0 guard (was NaN += number)
+// ETH/USDC pool has 2 market mappings:
+//   { marketId: ETH-USD,  baseIsToken0: false }  ← ETH=token1 in this pool
+//   { marketId: USDC-USD, baseIsToken0: true  }  ← USDC=token0 in this pool
+//
+// Single Swap event → compute price twice (once per market direction)
+// → publish to Kafka twice with different marketId and priceUsd.
+//
+// start() takes all mappings for this pool so one contract.on()
+// handles all markets. Never attach multiple listeners per pool.
 // ============================================================
 import { Injectable, Logger } from '@nestjs/common';
 import { ethers, formatUnits } from 'ethers';
@@ -22,6 +23,10 @@ import { SharedLiquidityService } from '../base/shared-liquidity.service';
 import { canonicalSymbol } from '../base/pool-filter';
 import { OnchainUtil } from '@/ingestion/onchain/common/onchain.utils';
 import { KafkaService } from '@/common-module/kafka/kafka.service';
+import { PoolMarketMapping } from '../base/dex-adapter.interface';
+
+// One entry per dex_market_maps row for this pool
+
 
 @Injectable()
 export class UniswapV3Adapter {
@@ -33,33 +38,29 @@ export class UniswapV3Adapter {
     private readonly kafka:      KafkaService,
   ) {}
 
-  // ── Multicall balance + slot0 init for all pools on a chain ──
-  // provider is passed in so each chain uses its own WS connection
   async initializePools(pools: DexPool[], _chainName: string) {
     await this.liquidity.initializePools(pools);
   }
 
-  // ── Attach Swap/Mint/Burn listeners for one pool ──────────────
-  // provider is the chain-specific WebSocketProvider
+  // ── One listener per pool, handles ALL markets for that pool ──
   start(
-    pool:       DexPool,
-    marketId:   number,
-    baseSymbol: string,
-    provider:   ethers.WebSocketProvider,
+    pool:     DexPool,
+    mappings: PoolMarketMapping[],   // all markets this pool serves
+    provider: ethers.WebSocketProvider,
   ) {
+    console.log("starttt")
+    if (!mappings.length) return;
+    console.log("starttt",mappings.length)
+
     const contract = new ethers.Contract(pool.poolKey, UNISWAP3_POOL_ABI, provider);
 
-    // ── SWAP ────────────────────────────────────────────────────
-    // args: [sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick]
+    // ── SWAP ─────────────────────────────────────────────────────
     contract.on("Swap", async (...args) => {
       try {
         const sqrtPriceX96 = args[4] as bigint;
+        const amount0      = Number(formatUnits(args[2], pool.token0.decimals));
+        const amount1      = Number(formatUnits(args[3], pool.token1.decimals));
 
-        // formatUnits first — raw int256 from chain
-        const amount0 = Number(formatUnits(args[2], pool.token0.decimals));
-        const amount1 = Number(formatUnits(args[3], pool.token1.decimals));
-
-        // Compute ratio price from sqrtPriceX96
         const price = OnchainUtil.sqrtPriceToPrice(
           sqrtPriceX96,
           pool.token0.decimals,
@@ -67,41 +68,34 @@ export class UniswapV3Adapter {
         );
         if (!price || price <= 0) return;
 
-        // Convert to USD using priceCache + quoteTokenAddress direction
-        const usdPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache);
-        if (!usdPrice || usdPrice <= 0) return;
+        // Publish to ALL markets this pool serves — one swap, N publications
+        for (const m of mappings) {
+          // Price computed with this market's direction
+          const usdPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache, m.baseIsToken0);
+          if (!usdPrice || usdPrice <= 0) continue;
 
-        pool.price = usdPrice;
-
-        // Volume = base token absolute amount
-        // quoteTokenAddress tells us which side is the quote
-        const baseIsToken0 = pool.quoteTokenAddress === pool.token1.address.toLowerCase();
-        const baseVolume   = baseIsToken0 ? Math.abs(amount0) : Math.abs(amount1);
-
-        // Guard: base symbol must match the market we're updating
-        const actualBase = canonicalSymbol(baseIsToken0 ? pool.token0 : pool.token1);
-        if (actualBase !== baseSymbol) {
-          this.logger.warn(
-            `Base mismatch: expected=${baseSymbol} got=${actualBase} pool=${pool.poolKey}`
-          );
-          return;
+          // Volume = base token amount for THIS market
+          const baseVolume = m.baseIsToken0 ? Math.abs(amount0) : Math.abs(amount1);
+console.log("kafkaaaaaaaaaaaa v3")
+          this.kafka.publishDexSwap({
+            marketId:   m.marketId,
+            exchange:   Exchange.UNISWAP_V3,
+            priceUsd:   usdPrice,
+            baseVolume,
+            openTime:   Date.now(),
+          }).catch(err => this.logger.error('Kafka publish failed', err));
         }
 
-        // Publish to Kafka — aggregation consumer folds into minute bucket
-        this.kafka.publishDexSwap({
-          marketId,
-          exchange:   Exchange.UNISWAP_V3,
-          priceUsd:   usdPrice,
-          baseVolume,
-          openTime:   Date.now(),
-        }).catch(err => this.logger.error('Kafka publish failed', err));
+        // Pool stats — use first mapping's price for display
+        const firstMap = mappings[0];
+        const displayPrice = OnchainUtil.normalizeToUSD(price, pool, this.priceCache, firstMap.baseIsToken0);
+        if (displayPrice) pool.price = displayPrice;
 
-        // Update in-memory pool stats
         pool.lastSwapAt = Date.now();
-        pool.volume24h  = (pool.volume24h ?? 0) + baseVolume;
+        // Volume uses token0 amount as baseline for pool-level tracking
+        pool.volume24h  = (pool.volume24h ?? 0) + Math.abs(amount0);
         pool.score      = (pool.liquidityUsd ?? 0) * 0.7 + (pool.volume24h ?? 0) * 0.3;
 
-        // Delta TVL tracking — amounts already in human-readable units
         await this.liquidity.updateFromSwap(pool, amount0, amount1);
 
       } catch (err) {
@@ -109,8 +103,7 @@ export class UniswapV3Adapter {
       }
     });
 
-    // ── MINT ────────────────────────────────────────────────────
-    // args: [sender, owner, tickLower, tickUpper, amount, amount0, amount1]
+    // ── MINT ─────────────────────────────────────────────────────
     contract.on("Mint", async (...args) => {
       try {
         const amount0 = Number(formatUnits(args[5], pool.token0.decimals));
@@ -121,8 +114,7 @@ export class UniswapV3Adapter {
       }
     });
 
-    // ── BURN ────────────────────────────────────────────────────
-    // args: [owner, tickLower, tickUpper, amount, amount0, amount1]
+    // ── BURN ─────────────────────────────────────────────────────
     contract.on("Burn", async (...args) => {
       try {
         const amount0 = Number(formatUnits(args[4], pool.token0.decimals));
@@ -133,7 +125,8 @@ export class UniswapV3Adapter {
       }
     });
 
-    this.logger.log(`👂 V3 listening ${pool.token0.symbol}/${pool.token1.symbol} ${pool.poolKey}`);
+    const marketList = mappings.map(m => `${m.marketBase}-USD(${m.baseIsToken0 ? 't0' : 't1'})`).join(', ');
+    this.logger.log(`👂 V3 ${pool.token0.symbol}/${pool.token1.symbol} → [${marketList}]`);
   }
 }
 

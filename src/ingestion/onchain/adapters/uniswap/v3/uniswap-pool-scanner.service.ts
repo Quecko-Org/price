@@ -1,11 +1,17 @@
-
-
 // ============================================================
 // uniswap-pool-scanner.service.ts  (UniswapDiscoveryService)
 //
-// Discovers V3 pools for ANY chain by accepting chainId + provider.
-// Uses CHAIN_CONFIGS[chainId] for factory address and quote addresses.
-// PancakeSwap V3 on BSC uses the same factory interface as Uniswap V3.
+// SIMPLIFIED — no getPoolSides, no quoteTokenAddress.
+//
+// Discovery only needs to:
+//   1. Find which pool address exists for a token pair
+//   2. Save the pool with token0/token1 in sorted order (Uniswap rule)
+//   3. Let DexAutoMapperService handle market mapping
+//
+// Sorting IS still required here because factory.getPool() only
+// returns the address when called with token0 < token1.
+// It does NOT affect price direction — that's handled by baseIsToken0
+// stored in dex_market_maps at mapping time.
 // ============================================================
 import { InjectRepository } from "@nestjs/typeorm";
 import { DexPool } from "../../../common/entities/pool.entityt";
@@ -15,7 +21,6 @@ import { ethers } from "ethers";
 import { UNISWAP3_FACTORY_ABI } from "../../../common/abi/uniswap.abi";
 import { Token } from "../../../common/entities/token.entity";
 import { Chain, DexType, CHAIN_CONFIGS } from "@/ingestion/onchain/common/chain.config";
-import { getPoolSides } from "../base/pool-filter";
 
 const FEES = [500, 3000, 10000];
 
@@ -28,20 +33,18 @@ export class UniswapDiscoveryService {
     @InjectRepository(DexPool) private poolRepo:  Repository<DexPool>,
   ) {}
 
-  // ── Main entry — called by UniswapV3OnchainService.bootChain() ──
   async discover(chainId: Chain, provider: ethers.WebSocketProvider) {
     const config = CHAIN_CONFIGS[chainId];
     this.logger.log(`🔍 ${config.name} V3 discovery...`);
 
-    // Load tokens for THIS chain only
     const allTokens = await this.tokenRepo.find({ where: { chainId } });
-
     if (!allTokens.length) {
       this.logger.warn(`${config.name}: no tokens in DB — run TokenSyncService first`);
       return;
     }
 
-    // Split by quote address from chain config (not hardcoded STABLES array)
+    // Split into base and quote using chain-specific addresses
+    // Quote tokens = stables + wrapped natives defined in chain config
     const quoteTokens = allTokens.filter(t =>
       config.quoteAddresses.has(t.address.toLowerCase())
     );
@@ -49,7 +52,7 @@ export class UniswapDiscoveryService {
       !config.quoteAddresses.has(t.address.toLowerCase())
     );
 
-    // quote × quote pairs (WETH/USDC, WBTC/USDT etc.)
+    // quote × quote pairs (WETH/USDC, WBTC/USDT, WETH/WBTC etc.)
     const quotePairs: [Token, Token][] = [];
     for (let i = 0; i < quoteTokens.length; i++) {
       for (let j = i + 1; j < quoteTokens.length; j++) {
@@ -62,93 +65,78 @@ export class UniswapDiscoveryService {
       `+ ${quotePairs.length} quote/quote pairs`
     );
 
-    // Use chain-specific factory address from config
-    const contract = new ethers.Contract(
+    const factory = new ethers.Contract(
       config.uniswapV3Factory,
       UNISWAP3_FACTORY_ABI,
-      provider  // chain-specific provider
+      provider,
     );
 
     let discovered = 0;
 
-    // base × quote
     for (const base of baseTokens) {
       for (const quote of quoteTokens) {
-        if (await this.checkAndSave(contract, base, quote, chainId)) discovered++;
+        if (await this.checkAndSave(factory, base, quote, chainId)) discovered++;
       }
     }
 
-    // quote × quote
     for (const [a, b] of quotePairs) {
-      if (await this.checkAndSave(contract, a, b, chainId)) discovered++;
+      if (await this.checkAndSave(factory, a, b, chainId)) discovered++;
     }
 
-    this.logger.log(`✅ ${config.name} V3: ${discovered} new pools discovered`);
+    this.logger.log(`✅ ${config.name} V3: ${discovered} new pools`);
   }
 
   private async checkAndSave(
-    contract: ethers.Contract,
+    factory:  ethers.Contract,
     tokenA:   Token,
     tokenB:   Token,
     chainId:  Chain,
   ): Promise<boolean> {
     if (tokenA.address === tokenB.address) return false;
 
-    // Uniswap requires token0 < token1 by address
+    // ✅ Sort ONLY because factory.getPool() requires token0 < token1
+    // This does NOT determine price direction — that's in dex_market_maps.baseIsToken0
     let token0 = tokenA, token1 = tokenB;
     if (token0.address.toLowerCase() > token1.address.toLowerCase()) {
       [token0, token1] = [token1, token0];
     }
 
-    const sides = getPoolSides(token0, token1);
-    if (!sides) return false;
-
     let saved = false;
 
     for (const fee of FEES) {
       try {
-        const poolKey = await contract.getPool(token0.address, token1.address, fee);
+        const poolKey = await factory.getPool(token0.address, token1.address, fee);
         if (!poolKey || poolKey === ethers.ZeroAddress) continue;
 
-        const exists = await this.poolRepo.exists({ where: { poolKey } });
+        // Check by poolKey + chainId — same address can't exist on two chains
+        const exists = await this.poolRepo.exists({ where: { poolKey, chainId } });
         if (exists) continue;
 
         await this.poolRepo.save({
-          dex:               DexType.UNISWAP_V3,
-          chainId,                                    // ✅ correct chain
+          dex:      DexType.UNISWAP_V3,
+          chainId,
           poolKey,
-          token0,
+          token0,   // sorted: token0.address < token1.address
           token1,
           fee,
-          quoteTokenAddress: sides.quote.address.toLowerCase(),
-          isActive:          true,
+          isActive: true,
+          // ✅ No quoteTokenAddress — direction stored in dex_market_maps.baseIsToken0
         });
 
         this.logger.log(
-          `✅ [${CHAIN_CONFIGS[chainId].name}] ${sides.base.symbol}/${sides.quote.symbol} fee=${fee}`
+          `✅ [${CHAIN_CONFIGS[chainId].name}] ` +
+          `${token0.symbol}/${token1.symbol} fee=${fee}`
         );
         saved = true;
 
       } catch (_) {
-        // getPool reverts for non-existent pairs — not an error
+        // getPool reverts for non-existent pairs — expected, not an error
       }
     }
 
     return saved;
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

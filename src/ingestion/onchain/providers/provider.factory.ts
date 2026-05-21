@@ -96,7 +96,7 @@ export class ChainProviderFactory  {
 
     try {
       this.logger.log(`${chain.name}: connecting...`);
-
+console.log("connnnnnnnnnnnnnnnn")
       // ✅ 403 is thrown during WS handshake BEFORE getBlockNumber()
       // We catch it here by wrapping in a Promise that rejects on
       // the WS 'upgrade' error event which fires for 403/401

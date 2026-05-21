@@ -10,7 +10,7 @@ export class OnchainCron {
 
 
   
-  // @Cron('*/10 * * * *')
+  @Cron('*/10 * * * *')
   async fullSync() {
     console.log('🔄 Running full sync...');
     await this.ingestionCronService.fullSync();

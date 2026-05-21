@@ -1,16 +1,11 @@
 // ============================================================
-// uniswap-v3-onchain.service.ts  (uniswap-onchain.service.ts)
+// uniswap-v3-onchain.service.ts
 //
-// Handles V3 for ALL chains — one service, any chain.
-// Called by OnchainService.bootChain(chainId, provider).
-//
-// Per-chain state is keyed by chainId so Ethereum and BSC
-// don't interfere with each other's pools or listeners.
-//
-// Cron runs every 6h and rediscovers new pools on ALL
-// enabled chains in one pass.
+// Loads dex_market_maps with baseIsToken0 for each pool.
+// Calls adapter.start(pool, allMappingsForPool, provider).
+// One contract listener per pool — handles all markets.
 // ============================================================
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { In, Repository } from 'typeorm';
@@ -18,79 +13,62 @@ import { ethers } from 'ethers';
 import { DexPool } from '@/ingestion/onchain/common/entities/pool.entityt';
 import { DexMarketMap } from '@/ingestion/onchain/common/entities/pool-market.entity';
 import { Chain, DexType, CHAIN_CONFIGS, getEnabledChains } from '@/ingestion/onchain/common/chain.config';
+import { UniswapDiscoveryService } from './uniswap-pool-scanner.service';
 import { UniswapV3Adapter } from './uniswap-v3.adapter';
 import { ChainProviderFactory } from '@/ingestion/onchain/providers/provider.factory';
-import { UniswapDiscoveryService } from './uniswap-pool-scanner.service';
+import { PoolMarketMapping } from '../base/dex-adapter.interface';
 
 @Injectable()
 export class UniswapV3OnchainService {
   private readonly logger = new Logger(UniswapV3OnchainService.name);
 
-  // Per-chain listener tracking: `${chainId}:${poolKey}` → true
-  // Prevents double-attaching Swap/Mint/Burn when cron re-runs
-  private listeningPools = new Set<string>();
-
-  // Per-chain discovery lock: chainId → boolean
-  private discoveryRunning = new Map<Chain, boolean>();
+  // `${chainId}:${poolKey}` — prevents double-listening on cron re-runs
+  private listeningPools    = new Set<string>();
+  private discoveryRunning  = new Map<Chain, boolean>();
 
   constructor(
-    @InjectRepository(DexPool)      private poolRepo: Repository<DexPool>,
+    @InjectRepository(DexPool)     private poolRepo: Repository<DexPool>,
     @InjectRepository(DexMarketMap) private mapRepo:  Repository<DexMarketMap>,
     private readonly discovery: UniswapDiscoveryService,
     private readonly adapter:   UniswapV3Adapter,
     private readonly chains:    ChainProviderFactory,
   ) {}
 
-  // ── Called by OnchainService per chain at boot ────────────
+  // ── Called by OnchainService at boot ─────────────────────────
   async bootChain(chainId: Chain, provider: ethers.WebSocketProvider) {
+    console.log("vr3 boot chain")
     const config = CHAIN_CONFIGS[chainId];
     this.logger.log(`${config.name} V3 booting...`);
 
-    // Step 1: Attach listeners on existing DB pools immediately
+    // Start listeners on existing DB pools
     await this.startListenersForChain(chainId, provider);
 
-    // Step 2: Run first discovery immediately — don't wait for cron
+    // First discovery run (don't wait 6h for cron)
     await this.discoverForChain(chainId, provider);
 
     this.logger.log(`✅ ${config.name} V3 ready`);
   }
 
-  // ── Cron: rediscover new pools on ALL enabled chains every 6h ─
+  // ── Cron: rediscover new pools every 6h on ALL chains ────────
   @Cron(CronExpression.EVERY_6_HOURS)
   async cronRediscovery() {
-    this.logger.log('🔍 V3 cron rediscovery starting...');
-
+    this.logger.log('🔍 V3 cron rediscovery...');
     const enabled = getEnabledChains();
-
-    // Run all chains in parallel — each is independently locked
-    await Promise.all(
-      enabled.map(chain => {
-        const provider = this.chains.get(chain.chainId);
-        if (!provider) return Promise.resolve();
-        return this.discoverForChain(chain.chainId, provider);
-      })
-    );
-
-    this.logger.log('✅ V3 cron rediscovery complete');
+    await Promise.all(enabled.map(chain => {
+      const provider = this.chains.get(chain.chainId);
+      if (!provider) return Promise.resolve();
+      return this.discoverForChain(chain.chainId, provider);
+    }));
   }
 
-  // ── Discovery for one chain ───────────────────────────────
+  // ── Discovery for one chain ───────────────────────────────────
   private async discoverForChain(chainId: Chain, provider: ethers.WebSocketProvider) {
-    if (this.discoveryRunning.get(chainId)) {
-      this.logger.warn(`${CHAIN_CONFIGS[chainId].name} V3 discovery already running — skipping`);
-      return;
-    }
-
+    if (this.discoveryRunning.get(chainId)) return;
     this.discoveryRunning.set(chainId, true);
-
     try {
-      // UniswapDiscoveryService.discover() already accepts chainId
-      // It uses CHAIN_CONFIGS[chainId].uniswapV3Factory for the factory address
-      // await this.discovery.discover(chainId, provider);
-
-      // After discovery, check for new pools needing listeners
+      await this.discovery.discover(chainId, provider);
+      // After discovery, start listeners for any newly discovered pools
       await this.startListenersForChain(chainId, provider);
-
     } catch (err) {
       this.logger.error(`${CHAIN_CONFIGS[chainId].name} V3 discovery failed`, err);
     } finally {
@@ -98,72 +76,70 @@ export class UniswapV3OnchainService {
     }
   }
 
-  // ── Attach listeners on top pools for a chain ────────────
+  // ── Attach listeners for all active pools on a chain ─────────
   private async startListenersForChain(chainId: Chain, provider: ethers.WebSocketProvider) {
     const allPools = await this.poolRepo.find({
       where:     { dex: DexType.UNISWAP_V3, chainId },
       relations: ['token0', 'token1'],
     });
-console.log("dex uniswpav3",allPools.length)
+
     if (!allPools.length) return;
 
-    // Initialize balances + startup prices (multicall: balanceOf + slot0)
+    // Init balances + prices for ALL pools (multicall)
     await this.adapter.initializePools(allPools, CHAIN_CONFIGS[chainId].name);
 
+    // Filter to active pools worth listening on
     const topPools = allPools
       .filter(p => p.isActive && (p.liquidityUsd > 1000 || p.token0Balance > 0))
       .sort((a, b) => (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0))
       .slice(0, 100);
+    console.log("vr3 topPools ",topPools.length)
 
-    if (!topPools.length) {
-      this.logger.warn(`${CHAIN_CONFIGS[chainId].name} V3: no active pools`);
-      return;
-    }
+    if (!topPools.length) return;
 
+    // Load ALL market mappings for top pools WITH baseIsToken0
     const poolIds  = topPools.map(p => p.id);
     const mappings = await this.mapRepo.find({
       where:     { poolId: In(poolIds) },
       relations: ['market'],
     });
 
-    const mapByPool = new Map<number, { marketId: number; base: string }[]>();
+    // Group: poolId → PoolMarketMapping[]
+    // Each pool can have MULTIPLE market mappings (one per token with a market)
+    const mapByPool = new Map<number, PoolMarketMapping[]>();
     for (const m of mappings) {
       if (!m.market) continue;
       if (!mapByPool.has(m.poolId)) mapByPool.set(m.poolId, []);
-      mapByPool.get(m.poolId)!.push({ marketId: m.marketId, base: m.market.base });
+      mapByPool.get(m.poolId)!.push({
+        marketId:     m.marketId,
+        marketBase:   m.market.base,
+        baseIsToken0: m.baseIsToken0,
+      });
     }
 
     let started = 0;
     for (const pool of topPools) {
-      // Key includes chainId so ETH WETH/USDC and ARB WETH/USDC
-      // don't collide even if poolKey happens to be the same
       const key = `${chainId}:${pool.poolKey}`;
-      if (this.listeningPools.has(key)) continue; // already listening
+      if (this.listeningPools.has(key)) continue; // already listening — cron safe
 
-      const markets = mapByPool.get(pool.id);
-      if (!markets?.length) continue;
+      const poolMappings = mapByPool.get(pool.id);
+      if (!poolMappings?.length) continue; // no market mapping yet — skip
 
-      for (const m of markets) {
-        // Pass provider per chain — each chain has its own WS connection
-        this.adapter.start(pool, m.marketId, m.base, provider);
-        started++;
-      }
-
+      // ONE listener per pool handles ALL markets
+      // ETH/USDC pool: one listener → publishes to ETH-USD AND USDC-USD
+      this.adapter.start(pool, poolMappings, provider);
       this.listeningPools.add(key);
+      started++;
     }
 
     if (started > 0) {
       this.logger.log(
         `👂 ${CHAIN_CONFIGS[chainId].name} V3: ${started} new listeners ` +
-        `(${this.listeningPools.size} total across all chains)`
+        `(${this.listeningPools.size} total)`
       );
     }
   }
 }
-
-
-
-
 
 
 

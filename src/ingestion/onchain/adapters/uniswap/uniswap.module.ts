@@ -17,11 +17,12 @@ import { SharedLiquidityService } from "./base/shared-liquidity.service";
 import { IngestionCronModule } from "../../common/ingestion-cron/ingestion-cron.module";
 import { ChainProviderFactory } from "../../providers/provider.factory";
 import { UniswapV3OnchainService } from "./v3/uniswap-onchain.service";
+import { ChainSyncStateEntity } from "../../common/entities/chain-sync-state";
 
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Token, DexPool, DexMarketMap, MarketEntity]),
+    TypeOrmModule.forFeature([Token, DexPool, DexMarketMap, MarketEntity,ChainSyncStateEntity]),
     IngestionCronModule
   ],
   providers: [

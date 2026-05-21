@@ -79,7 +79,8 @@ export class SymbolsService {
   async syncExchangeSymbols(
     exchange: Exchange,
     symbols: { symbol: string; base: string; quote: string }[],
-  ) {
+  ) { 
+    console.log("synccccccccc")
     console.log("length", symbols.length, exchange)
     if (!symbols.length) return;
     console.log("length", symbols.length, exchange);
@@ -309,8 +310,8 @@ export class SymbolsService {
     return this.symbolExchangeRepo.find({
       where: { exchange },
       relations: ['symbol'],
-    });
-  }
+    }); 
+  } 
 
 
 

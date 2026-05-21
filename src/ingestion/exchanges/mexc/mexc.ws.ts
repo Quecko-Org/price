@@ -53,7 +53,7 @@ export class MexcWebSocket {
         const meta     = symbolMetaMap[key];
         if (!marketId || !meta) return;
 
-        this.kafka.publishCandle(marketId, Exchange.MEXC, {
+        this.kafka.publishCandle(marketId, Exchange.MEXC, { 
           exchange: Exchange.MEXC,
           openTime: Number(kline.windowStart) * 1000,
           quote:    meta.quote,

@@ -42,6 +42,7 @@ const DEPTH_SYMBOL_LIMIT = 50;
 @Injectable()
 export class MarketDataSyncService {
   private readonly logger = new Logger(MarketDataSyncService.name);
+  private syncRunning      = false;
 
   constructor(
     @InjectRepository(SymbolExchangeEntity)
@@ -61,19 +62,68 @@ export class MarketDataSyncService {
 
 
   // @Cron('*/30 * * * *') 
-  // @Cron('*/1 * * * *')  
-  async syncAllExchanges() {
-    this.logger.log('Starting symbol sync');
-
-    await Promise.allSettled([
-      this.binance.fetchAndStoreSymbols(),
-      this.mexc.fetchAndStoreSymbols(),
-      this.okx.fetchAndStoreSymbols(),
-
-    ]);
-
-    this.logger.log('Symbol sync completed');
+  @Cron('*/1 * * * *')  
+async syncAllExchanges() {
+    if (this.syncRunning) {
+      this.logger.warn('Symbol sync already running — skipping this tick');
+      return;
+    }
+ 
+    this.syncRunning = true;
+    this.logger.log('🔄 Symbol sync starting (serial)...');
+ 
+    try {
+      // ✅ SERIAL — one after another, no concurrent transactions
+      // This is the only change needed to fix deadlock.
+ 
+      this.logger.log('  → Binance...');
+      await this.runSafe('Binance', () => this.binance.fetchAndStoreSymbols());
+ 
+      this.logger.log('  → MEXC...');
+      await this.runSafe('MEXC', () => this.mexc.fetchAndStoreSymbols());
+ 
+      this.logger.log('  → OKX...');
+      await this.runSafe('OKX', () => this.okx.fetchAndStoreSymbols());
+ 
+      this.logger.log('✅ Symbol sync complete');
+ 
+    } finally {
+      this.syncRunning = false;
+    }
   }
+ 
+  // ── Safe wrapper: catches DNS/network errors per exchange ─────
+  // OKX may be blocked by network (ENOTFOUND ws.okx.com).
+  // Don't let one exchange failure block the others.
+  private async runSafe(name: string, fn: () => Promise<void>) {
+    try {
+      await fn();
+    } catch (err: any) {
+      console.log("lllll",err)
+      const msg = err?.message ?? String(err);
+ 
+      if (msg.includes('ENOTFOUND') || msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT')) {
+        this.logger.warn(
+          `${name}: network unreachable (${msg}) — skipping this sync cycle`
+        );
+      } else if (msg.includes('40P01')) {
+        // Deadlock slipped through — log clearly
+        this.logger.error(
+          `${name}: deadlock error — this should not happen with serial sync. ` +
+          `Check if another process is also writing to symbols/markets tables.`
+        );
+      } else {
+        this.logger.error(`${name}: sync failed — ${err}`);
+      }
+    }
+  }
+
+
+
+
+
+
+
   // ── TICKER REFRESH — every 60 seconds ────────────────────
   // One batch call per exchange → write to DB + Redis
    @Cron('0 * * * * *') // every 60s at :00
@@ -86,7 +136,7 @@ export class MarketDataSyncService {
   }
 
   // ── DEPTH REFRESH — every 5 minutes, top 50 symbols ──────
-  @Cron('0 */5 * * * *') // every 5 min at :00
+  @Cron('0 */1 * * * *') // every 5 min at :00
   async syncDepth() {
     await Promise.all([
       // this.syncExchangeDepth(Exchange.BINANCE, (sym, mid) => this.binance.fetchDepth(sym, mid)),
@@ -103,7 +153,6 @@ export class MarketDataSyncService {
   ) {
     try {
       const tickers = await fetchFn();
-      console.log("lllllllll",tickers[0])
 
       if (!tickers.length) return;
  

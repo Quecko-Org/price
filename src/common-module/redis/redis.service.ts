@@ -28,39 +28,42 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import Redis from 'ioredis';
 
 const TTL = {
-  PRICE:   120,  // 2 min — refreshed on every candle close
-  CANDLE:  120,  // 2 min
-  FX:      600,  // 10 min
-  STATS:   60,   // 1 min
+  PRICE: 120,  // 2 min — refreshed on every candle close
+  CANDLE: 120,  // 2 min
+  FX: 600,  // 10 min
+  STATS: 60,   // 1 min
 };
- 
-@Injectable()
-export class RedisService implements OnModuleInit,OnModuleDestroy {
-  private readonly logger = new Logger(RedisService.name);
-  private client:    Redis;
-  private publisher: Redis; // separate connection for PUBLISH (ioredis rule)
-  private subscriber: Redis; 
 
-  async onModuleInit() {
+@Injectable()
+export class RedisService implements OnModuleDestroy {
+  private readonly logger = new Logger(RedisService.name);
+  private client: Redis;
+  private publisher: Redis; // separate connection for PUBLISH (ioredis rule)
+  private subscriber: Redis;
+
+  constructor() {
     const opts = {
-      host:              process.env.REDIS_HOST ?? 'localhost',
-      port:              Number(process.env.REDIS_PORT ?? 6378),
-      password:          process.env.REDIS_PASSWORD,
-      retryStrategy:     (times: number) => Math.min(times * 200, 3_000),
-      enableReadyCheck:  true,
+      host: process.env.REDIS_HOST ?? 'localhost',
+      port: Number(process.env.REDIS_PORT ?? 6378),
+      password: process.env.REDIS_PASSWORD,
+      retryStrategy: (times: number) => Math.min(times * 200, 3_000),
+      enableReadyCheck: true,
       maxRetriesPerRequest: 3,
     };
 
-    this.client    = new Redis(opts);
+    this.client = new Redis(opts);
     this.publisher = new Redis(opts);
-    this.subscriber = new Redis();
+    this.subscriber = new Redis(opts);
 
-    this.client.on('error',    e => this.logger.error('Redis client error', e));
+    this.client.on('error', e => this.logger.error('Redis client error', e));
     this.publisher.on('error', e => this.logger.error('Redis publisher error', e));
     this.subscriber.on('error', e => this.logger.error('Redis subscriber error', e));
 
     this.logger.log('✅ Redis connected');
+
+
   }
+
 
   // ── PRICE ─────────────────────────────────────────────────
   async setPrice(symbol: string, priceUsd: number) {
@@ -73,19 +76,25 @@ export class RedisService implements OnModuleInit,OnModuleDestroy {
   }
 
   async getAllPrices(): Promise<Map<string, number>> {
+    let result
+    try {
     const keys = await this.client.keys('price:*');
-    if (!keys.length) return new Map();
+      if (!keys.length) return new Map();
 
-    const values = await this.client.mget(...keys);
-    const result = new Map<string, number>();
+      const values = await this.client.mget(...keys);
 
-    keys.forEach((k, i) => {
-      const symbol = k.replace('price:', '');
-      const val    = values[i];
-      if (val) result.set(symbol, Number(val));
-    });
+      result = new Map<string, number>();
 
+      keys.forEach((k, i) => {
+        const symbol = k.replace('price:', '');
+        const val = values[i];
+        if (val) result.set(symbol, Number(val));
+      });
+    } catch (er) {
+      console.log("sdds", er)
+    }
     return result;
+
   }
 
   // ── LATEST CANDLE ─────────────────────────────────────────
@@ -136,12 +145,12 @@ export class RedisService implements OnModuleInit,OnModuleDestroy {
     );
   }
 
-  
+
   // Returns a subscriber connection — caller owns disconnect
   createSubscriber(): Redis {
     return new Redis({
-      host:     process.env.REDIS_HOST ?? 'localhost',
-      port:     Number(process.env.REDIS_PORT ?? 6379),
+      host: process.env.REDIS_HOST ?? 'localhost',
+      port: Number(process.env.REDIS_PORT ?? 6378),
       password: process.env.REDIS_PASSWORD,
     });
   }
@@ -158,5 +167,6 @@ export class RedisService implements OnModuleInit,OnModuleDestroy {
   async onModuleDestroy() {
     await this.client.quit();
     await this.publisher.quit();
+    await this.subscriber.quit();
   }
 }
