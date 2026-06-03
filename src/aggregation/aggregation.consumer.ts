@@ -124,7 +124,7 @@ export class AggregationConsumer implements OnModuleInit, OnModuleDestroy {
       close:    usdClose,
       volume:   candle.volume || 0, // raw base volume — NOT trust-weighted
     });
-
+   
     this.buffer.add(marketId, entry);
   }
 
@@ -156,9 +156,10 @@ export class AggregationConsumer implements OnModuleInit, OnModuleDestroy {
     const now = Date.now();
 
     for (const { symbolId, openTime } of this.buffer.entries()) {
+    
       if (now < openTime + 70_000) continue; // not yet closed
-
       const entry = this.buffer.get(symbolId, openTime);
+
       if (!entry) continue;
 
       const candles = Array.from(entry.exchanges.values()).filter(c =>
@@ -171,9 +172,11 @@ export class AggregationConsumer implements OnModuleInit, OnModuleDestroy {
 
       // ✅ Update in-memory price cache + Redis
       const market = this.marketCache.get(symbolId);
+
       if (market?.quote === 'USD') {
         this.priceCache.updateCryptoPrice(market.base, agg.weightedClose);
         // Push to Redis so all instances and the API get updated price
+    
         await this.redis.setPrice(market.base, agg.weightedClose);
         // Publish live candle to Redis pub/sub for WebSocket clients
         await this.redis.publishLiveCandle(symbolId, {

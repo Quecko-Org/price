@@ -61,7 +61,7 @@ export class PriceCacheService implements OnModuleInit {
       this.logger.warn(`Redis price warm failed (${err?.message}) — falling back to DB`);
     }
     // Step 2: If Redis was empty, load from last candle close per market in DB
-    if (redisLoaded === 0 || redisLoaded<50) {
+    if (redisLoaded === 0 || redisLoaded<5) {
       await this.warmFromDatabase();
     }
  

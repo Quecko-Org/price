@@ -60,10 +60,13 @@ console.log("loadAndStartPools",pools.length)
     this.logger.log(`📦 ${config.name} V4: ${pools.length} pools in DB`);
 
     if (!pools.length) {
+    this.logger.log(`ℹ️  ${config.name} V4: no pools yet — backfill will discover them`);
+      // Start adapter so it's ready when backfill registers pools
       this.adapter.start(chainId, provider);
       return;
     }
-
+    // Subgraph TVL + StateView price init
+    // Passes chainId so adapter uses the correct subgraph endpoint
     await this.adapter.initializePools(pools, chainId);
 
     const topPools = pools

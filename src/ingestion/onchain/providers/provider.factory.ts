@@ -1,14 +1,22 @@
 // ============================================================
 // chain-provider.factory.ts
+//
+// onModuleInit() AWAITS all chain connections — but each chain
+// has a 10s timeout so one bad chain can't block forever.
+// Total worst-case: 10s × N chains (run in parallel = just 10s).
+//
+// OnchainService.bootAllChains() runs AFTER onModuleInit() finishes,
+// so providers are guaranteed to be populated (or timed out) by then.
 // ============================================================
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { Chain, ChainConfig, getEnabledChains } from '../common/chain.config';
 
-const MAX_RETRIES = 5;
+const MAX_RETRIES        = 5;
+const HANDSHAKE_TIMEOUT  = 10_000; // 10s per chain
 
 @Injectable()
-export class ChainProviderFactory  {
+export class ChainProviderFactory implements OnModuleInit {
   private readonly logger = new Logger(ChainProviderFactory.name);
 
   private providers       = new Map<Chain, ethers.WebSocketProvider>();
@@ -16,111 +24,85 @@ export class ChainProviderFactory  {
   private retryCount      = new Map<Chain, number>();
   private heartbeats      = new Map<Chain, NodeJS.Timeout>();
 
-  async init() {
+  // ── NestJS calls this automatically ──────────────────────────
+  // Awaits all chain connections (parallel, 10s timeout each).
+  // Returns when all chains have either connected or timed out.
+  // OnchainService.onModuleInit() runs AFTER this completes,
+  // so providers are ready when bootAllChains() is called.
+  async onModuleInit() {
     const chains = getEnabledChains();
+
+    if (!chains.length) {
+      this.logger.warn('No chains enabled — set ETH_WS / BSC_WS etc. in .env');
+      return;
+    }
+
     this.logger.log(
       `🔌 Connecting to ${chains.length} chain(s): ${chains.map(c => c.name).join(', ')}`
     );
 
-    // ✅ Validate all env vars FIRST before any connection attempt
-    // Shows all problems at once instead of discovering them one by one
     this.validateEnvVars(chains);
 
-    // Connect all chains in parallel — one failure doesn't block others
+    // ✅ Await all in parallel — worst case 10s total (not 10s × N)
+    // Each chain times out independently — one failure doesn't block others
     await Promise.allSettled(
       chains.map(chain => this.connect(chain))
     );
 
-    // Summary after all connection attempts
     const connected = [...this.providers.keys()];
-    const failed    = chains
-      .filter(c => !this.providers.has(c.chainId))
-      .map(c => c.name);
+    const failed    = chains.filter(c => !this.providers.has(c.chainId)).map(c => c.name);
 
-    this.logger.log(
-      `✅ Connected: [${connected.map(id => this.chainName(id)).join(', ')}]`
-    );
+    if (connected.length) {
+      this.logger.log(`✅ Connected: [${connected.map(id => this.chainName(id)).join(', ')}]`);
+    }
     if (failed.length) {
-      this.logger.warn(
-        `⚠️  Failed/skipped: [${failed.join(', ')}] — check env vars above`
-      );
+      this.logger.warn(`⚠️  Not connected: [${failed.join(', ')}] — check env vars`);
     }
   }
 
-  // ── Pre-flight env var validation ─────────────────────────────
-  // Runs before any connection attempt so you see ALL problems at once.
+  // ── Validate env vars before connecting ──────────────────────
   private validateEnvVars(chains: ChainConfig[]) {
-    this.logger.log('📋 RPC URL validation:');
-
-    const seen = new Map<string, string>(); // url → chainName
-
+    const seen = new Map<string, string>();
     for (const chain of chains) {
       const url = process.env[chain.wsEnvKey];
-
       if (!url) {
-        this.logger.warn(`  ❌ ${chain.name}: ${chain.wsEnvKey} is not set`);
+        this.logger.warn(`  ❌ ${chain.name}: ${chain.wsEnvKey} not set — skipping`);
         continue;
       }
-
       if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
-        this.logger.error(
-          `  ❌ ${chain.name}: ${chain.wsEnvKey} must start with wss:// or ws://, got "${url.slice(0, 30)}..."`
-        );
+        this.logger.error(`  ❌ ${chain.name}: URL must start with wss:// — got "${url.slice(0, 30)}"`);
         continue;
       }
-
-      // ✅ Detect duplicate URLs (like your POLYGON_WS = bsc.publicnode.com)
-      const hostname = this.extractHostname(url);
-      if (seen.has(hostname)) {
-        this.logger.warn(
-          `  ⚠️  ${chain.name}: ${chain.wsEnvKey} points to "${hostname}" ` +
-          `which is also used by ${seen.get(hostname)} — possible copy-paste error`
-        );
+      const host = this.extractHostname(url);
+      if (seen.has(host)) {
+        this.logger.warn(`  ⚠️  ${chain.name}: same host as ${seen.get(host)} — possible copy-paste error`);
       } else {
-        seen.set(hostname, chain.name);
+        seen.set(host, chain.name);
       }
-
-      this.logger.log(
-        `  ✅ ${chain.name}: ${chain.wsEnvKey} = ${this.maskUrl(url)}`
-      );
+      this.logger.log(`  ✅ ${chain.name}: ${this.maskUrl(url)}`);
     }
   }
 
   // ── Connect one chain ─────────────────────────────────────────
-  private async connect(chain: ChainConfig) {
+  async connect(chain: ChainConfig) {
     const url = process.env[chain.wsEnvKey];
-
-    if (!url || (!url.startsWith('wss://') && !url.startsWith('ws://'))) {
-      return; // already logged in validateEnvVars
-    }
+    if (!url || (!url.startsWith('wss://') && !url.startsWith('ws://'))) return;
 
     try {
       this.logger.log(`${chain.name}: connecting...`);
-console.log("connnnnnnnnnnnnnnnn")
-      // ✅ 403 is thrown during WS handshake BEFORE getBlockNumber()
-      // We catch it here by wrapping in a Promise that rejects on
-      // the WS 'upgrade' error event which fires for 403/401
+
       const provider = await this.createProviderWithHandshakeCheck(url, chain.name);
 
-      // Attach lifecycle handlers
       const ws = (provider as any).websocket;
       if (ws) {
-        ws.on('close', (code: number, reason: Buffer) => {
-          const reasonStr = reason?.toString() || 'no reason';
-          this.logger.warn(
-            `${chain.name} WS closed — code=${code} reason="${reasonStr}" — will reconnect`
-          );
+        ws.on('close', (code: number) => {
+          this.logger.warn(`${chain.name} WS closed (code=${code}) — reconnecting`);
           this.stopHeartbeat(chain.chainId);
           this.providers.delete(chain.chainId);
           this.scheduleReconnect(chain);
         });
-
-        // 'error' fires before 'close' for WS errors
-        // We log here but let 'close' handle the reconnect
         ws.on('error', (err: Error) => {
-          this.logger.error(
-            `${chain.name} WS error: ${err.message} — ${this.getErrorAdvice(err.message)}`
-          );
+          this.logger.error(`${chain.name} WS error: ${err.message}`);
         });
       }
 
@@ -129,43 +111,30 @@ console.log("connnnnnnnnnnnnnnnn")
       this.providers.set(chain.chainId, provider);
 
       const block = await provider.getBlockNumber();
-      this.logger.log(`✅ ${chain.name} connected — latest block: ${block}`);
+      this.logger.log(`✅ ${chain.name} connected — block ${block}`);
 
     } catch (err: any) {
-      const message: string = err?.message ?? String(err);
-      const code            = err?.code ?? '';
+      const msg = err?.message ?? String(err);
 
-      // ── Permanent errors (don't retry) ────────────────────────
-      if (message.includes('403') || message.includes('Forbidden')) {
+      if (msg.includes('403') || msg.includes('Forbidden')) {
         this.logger.error(
-          `❌ ${chain.name}: 403 Forbidden\n` +
-          `   URL: ${this.maskUrl(process.env[chain.wsEnvKey]!)}\n` +
-          `   Fix: Your API key is invalid or expired for this chain.\n` +
-          `   Tip: For free access use wss://${this.chainPublicNode(chain.chainId)}`
+          `❌ ${chain.name}: 403 Forbidden — API key invalid.\n` +
+          `   Try: wss://${this.chainPublicNode(chain.chainId)}`
         );
-        return; // no retry
+        return; // permanent failure — no retry
+      }
+      if (msg.includes('401') || msg.includes('Unauthorized')) {
+        this.logger.error(`❌ ${chain.name}: 401 Unauthorized — wrong API key in ${chain.wsEnvKey}`);
+        return;
       }
 
-      if (message.includes('401') || message.includes('Unauthorized')) {
-        this.logger.error(
-          `❌ ${chain.name}: 401 Unauthorized — wrong API key in ${chain.wsEnvKey}`
-        );
-        return; // no retry
-      }
-
-      // ── Transient errors (retry with backoff) ─────────────────
-      this.logger.error(
-        `❌ ${chain.name}: connection failed — ${message}\n` +
-        `   ${this.getErrorAdvice(message)}`
-      );
+      // Transient error — schedule retry
+      this.logger.error(`❌ ${chain.name}: ${msg}`);
       this.scheduleReconnect(chain);
     }
   }
 
-  // ── Create provider and catch handshake errors (403 etc.) ─────
-  // ethers.WebSocketProvider fires 403 as a WS 'upgrade' error
-  // which is an 'error' event on the underlying ws object.
-  // We wrap in a Promise so we can catch it synchronously.
+  // ── WS handshake with timeout ─────────────────────────────────
   private createProviderWithHandshakeCheck(
     url:       string,
     chainName: string,
@@ -174,50 +143,39 @@ console.log("connnnnnnnnnnnnnnnn")
       const provider = new ethers.WebSocketProvider(url);
       const ws       = (provider as any).websocket;
 
-      // Set a handshake timeout
-      const timeout = setTimeout(() => {
-        reject(new Error(`Handshake timeout after 15s — check if the RPC URL is reachable`));
-      }, 15_000);
-
-      const cleanup = () => clearTimeout(timeout);
+      const timer = setTimeout(() => {
+        reject(new Error(`${chainName}: handshake timeout after ${HANDSHAKE_TIMEOUT / 1000}s`));
+      }, HANDSHAKE_TIMEOUT);
 
       if (!ws) {
-        // No underlying WS object — resolve optimistically
-        cleanup();
+        clearTimeout(timer);
         resolve(provider);
         return;
       }
 
-      // Fired when WS handshake succeeds (connection open)
-      ws.once('open', () => {
-        cleanup();
-        // Remove the error listener we added below
-        ws.off('error', onHandshakeError);
+      const onOpen = () => {
+        clearTimeout(timer);
+        ws.off('error', onError);
         resolve(provider);
-      });
-
-      // Fired if handshake fails (403, DNS, ECONNREFUSED etc.)
-      const onHandshakeError = (err: Error) => {
-        cleanup();
-        ws.off('open', () => {});
+      };
+      const onError = (err: Error) => {
+        clearTimeout(timer);
+        ws.off('open', onOpen);
         reject(err);
       };
 
-      ws.once('error', onHandshakeError);
+      ws.once('open',  onOpen);
+      ws.once('error', onError);
     });
   }
 
-  // ── Exponential backoff reconnect ─────────────────────────────
+  // ── Reconnect with exponential backoff ────────────────────────
   private scheduleReconnect(chain: ChainConfig) {
     if (this.reconnectTimers.has(chain.chainId)) return;
 
     const retries = this.retryCount.get(chain.chainId) ?? 0;
-
     if (retries >= MAX_RETRIES) {
-      this.logger.error(
-        `❌ ${chain.name}: ${MAX_RETRIES} consecutive failures — stopped retrying.\n` +
-        `   Fix ${chain.wsEnvKey} and restart the app.`
-      );
+      this.logger.error(`❌ ${chain.name}: max retries reached — restart to reconnect`);
       return;
     }
 
@@ -233,82 +191,27 @@ console.log("connnnnnnnnnnnnnnnn")
     this.reconnectTimers.set(chain.chainId, timer);
   }
 
-  // ── Heartbeat: detect silent WS drops ────────────────────────
+  // ── Heartbeat ─────────────────────────────────────────────────
   private startHeartbeat(chain: ChainConfig, provider: ethers.WebSocketProvider) {
     this.stopHeartbeat(chain.chainId);
-
     const interval = setInterval(async () => {
       try {
         await provider.getBlockNumber();
-      } catch (err: any) {
-        this.logger.warn(
-          `${chain.name}: heartbeat failed (${err?.message}) — reconnecting`
-        );
+      } catch {
+        this.logger.warn(`${chain.name}: heartbeat failed — reconnecting`);
         this.stopHeartbeat(chain.chainId);
         this.providers.delete(chain.chainId);
         try { provider.destroy(); } catch (_) {}
-        // Heartbeat failures reset retry count — transient network issue
         this.retryCount.set(chain.chainId, 0);
         this.scheduleReconnect(chain);
       }
     }, 30_000);
-
     this.heartbeats.set(chain.chainId, interval);
   }
 
   private stopHeartbeat(chainId: Chain) {
-    const interval = this.heartbeats.get(chainId);
-    if (interval) {
-      clearInterval(interval);
-      this.heartbeats.delete(chainId);
-    }
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────
-  private maskUrl(url: string): string {
-    // Hide API key: keep first 8 chars of any hex-like segment
-    return url.replace(/\/([a-f0-9]{8})[a-f0-9]{8,}/gi, '/$1***');
-  }
-
-  private extractHostname(url: string): string {
-    try { return new URL(url).hostname; }
-    catch { return url; }
-  }
-
-  private chainPublicNode(chainId: Chain): string {
-    const map: Partial<Record<Chain, string>> = {
-      [Chain.ETHEREUM]: 'ethereum.publicnode.com',
-      [Chain.BSC]:      'bsc.publicnode.com',
-      [Chain.ARBITRUM]: 'arbitrum.publicnode.com',
-      [Chain.POLYGON]:  'polygon.publicnode.com',
-      [Chain.BASE]:     'base.publicnode.com',
-      [Chain.OPTIMISM]: 'optimism.publicnode.com',
-    };
-    return map[chainId] ?? 'publicnode.com';
-  }
-
-  private chainName(chainId: Chain): string {
-    const names: Partial<Record<Chain, string>> = {
-      [Chain.ETHEREUM]: 'Ethereum',
-      [Chain.BSC]:      'BSC',
-      [Chain.ARBITRUM]: 'Arbitrum',
-      [Chain.POLYGON]:  'Polygon',
-      [Chain.BASE]:     'Base',
-      [Chain.OPTIMISM]: 'Optimism',
-    };
-    return names[chainId] ?? String(chainId);
-  }
-
-  private getErrorAdvice(message: string): string {
-    if (message.includes('403') || message.includes('Forbidden'))
-      return 'Your API key is invalid or expired.';
-    if (message.includes('ECONNREFUSED'))
-      return 'RPC node is refusing connections — try a different endpoint.';
-    if (message.includes('ETIMEDOUT') || message.includes('timeout'))
-      return 'Connection timed out — check your network or try a different RPC.';
-    if (message.includes('ENOTFOUND') || message.includes('DNS'))
-      return 'DNS resolution failed — check the hostname in your env var.';
-    return 'Check your RPC endpoint and API key.';
+    const h = this.heartbeats.get(chainId);
+    if (h) { clearInterval(h); this.heartbeats.delete(chainId); }
   }
 
   // ── Public API ────────────────────────────────────────────────
@@ -329,35 +232,40 @@ console.log("connnnnnnnnnnnnnnnn")
   }
 
   async onModuleDestroy() {
-    for (const interval of this.heartbeats.values())      clearInterval(interval);
-    for (const timer    of this.reconnectTimers.values())  clearTimeout(timer);
-    for (const provider of this.providers.values()) {
-      try { provider.destroy(); } catch (_) {}
+    for (const i of this.heartbeats.values())      clearInterval(i);
+    for (const t of this.reconnectTimers.values())  clearTimeout(t);
+    for (const p of this.providers.values()) {
+      try { p.destroy(); } catch (_) {}
     }
   }
+
+  // ── Helpers ───────────────────────────────────────────────────
+  private maskUrl(url: string): string {
+    return url.replace(/\/([a-f0-9]{8})[a-f0-9]{8,}/gi, '/$1***');
+  }
+  private extractHostname(url: string): string {
+    try { return new URL(url).hostname; } catch { return url; }
+  }
+  private chainPublicNode(chainId: Chain): string {
+    const m: Partial<Record<Chain, string>> = {
+      [Chain.ETHEREUM]: 'ethereum.publicnode.com',
+      [Chain.BSC]:      'bsc.publicnode.com',
+      [Chain.ARBITRUM]: 'arbitrum.publicnode.com',
+      [Chain.POLYGON]:  'polygon.publicnode.com',
+      [Chain.BASE]:     'base.publicnode.com',
+      [Chain.OPTIMISM]: 'optimism.publicnode.com',
+    };
+    return m[chainId] ?? 'publicnode.com';
+  }
+  private chainName(chainId: Chain): string {
+    const m: Partial<Record<Chain, string>> = {
+      [Chain.ETHEREUM]: 'Ethereum', [Chain.BSC]: 'BSC',
+      [Chain.ARBITRUM]: 'Arbitrum', [Chain.POLYGON]: 'Polygon',
+      [Chain.BASE]: 'Base',         [Chain.OPTIMISM]: 'Optimism',
+    };
+    return m[chainId] ?? String(chainId);
+  }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

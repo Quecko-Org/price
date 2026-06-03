@@ -54,11 +54,14 @@ const mergedDoc: any = {
   },
 };
 SwaggerModule.setup('api-docs', app, mergedDoc);
-  
 
+try {
+  console.log('Starting server...');
   await app.listen(process.env.PORT ?? 3000);
-
-
+  console.log('Server running on 3007');
+} catch (err) {
+  console.error('Listen failed:', err);
+}
 }
 // process.on('unhandledRejection', (reason, promise) => {
 //   console.error('Unhandled Rejection at:', promise, 'reason:', reason);

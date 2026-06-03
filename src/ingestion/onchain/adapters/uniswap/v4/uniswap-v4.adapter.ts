@@ -35,7 +35,6 @@ export class UniswapV4Adapter {
   ) {}
 
   register(chainId: Chain, pool: DexPool, mappings: PoolMarketMapping[]) {
-    console.log("register",chainId)
     this.poolMap.set(`${chainId}:${pool.poolKey}`, { pool, mappings });
   }
 
@@ -63,17 +62,13 @@ export class UniswapV4Adapter {
     // ── SWAP ─────────────────────────────────────────────────────
     contract.on("Swap", async (poolId, _sender, a0Raw, a1Raw, sqrtPriceX96) => {
       const entry = this.poolMap.get(`${chainId}:${poolId}`);
-      console.log("swaaap",poolId,entry,this.poolMap.size)
-
       if (!entry) return;
-
       const { pool, mappings } = entry;
       if (!mappings.length) return;
 
       try {
         const amount0 = Number(ethers.formatUnits(a0Raw, pool.token0.decimals));
         const amount1 = Number(ethers.formatUnits(a1Raw, pool.token1.decimals));
-
         const price = OnchainUtil.sqrtPriceToPrice(
           sqrtPriceX96,
           pool.token0.decimals,

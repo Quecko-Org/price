@@ -17,8 +17,9 @@ import { ChainProviderFactory } from './providers/provider.factory';
     IngestionCronModule
   ],
   providers: [
+    ChainProviderFactory,
     OnchainService,
-    EthereumProvider,ChainProviderFactory
+    EthereumProvider
   ],
 })
 export class OnchainModule {}

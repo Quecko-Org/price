@@ -35,14 +35,15 @@ import { CommonModuleModule } from './common-module/common-module.module';
     SymbolsModule,
     SyncModule,
     MarketDataModule,
+     CronModule,
+    CommonModuleModule,
     OnchainModule,
     AuthModule,
     ApiModule,
     UserModule,
     ApiUsageModule,
     AdminModule,
-    CronModule,
-    CommonModuleModule
+   
     
   ],
   controllers: [AppController],

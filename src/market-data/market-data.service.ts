@@ -39,7 +39,6 @@ export class MarketDataService implements OnModuleInit {
     const symbols = await this.symbolRepo.find({
       relations: ["exchanges", "market"],
     });
-    console.log("symbols", symbols.length)
     const symbolMarketMap: Record<string, number> = {};
     const symbolMetaMap: Record<string, { base: string; quote: string }> = {};
 
@@ -55,7 +54,7 @@ export class MarketDataService implements OnModuleInit {
           quote: s.quote,
         };
 
-        this.marketCache.set(s.market.id, { base: s.base, quote: s.quote });
+        this.marketCache.set(s.market.id, { base: s.market.base, quote: s.market.quote });
 
       }
 
