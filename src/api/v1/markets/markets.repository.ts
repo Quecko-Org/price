@@ -9,13 +9,13 @@ import { DataSource } from 'typeorm';
 export class MarketsRepository {
 
   constructor(private readonly dataSource: DataSource) {}
-
+ 
   // ── EXISTING ─────────────────────────────────────────────────
 
   async getMarkets(marketId: number, interval: string, from?: number, to?: number, limit = 500) {
     const table = intervalTable(interval);
     const params: any[] = [marketId];
-    const where = ['"marketId" = $1'];
+    const where = ['"marketId" = $1']; 
     let i = 2;
     if (from) { params.push(new Date(from * 1000)); where.push(`"openTime" >= $${i++}`); }
     if (to)   { params.push(new Date(to * 1000));   where.push(`"openTime" <= $${i++}`); }

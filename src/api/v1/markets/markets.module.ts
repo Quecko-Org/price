@@ -22,12 +22,13 @@ import { TokenMetadataModule } from '../token-metadata/token-metadata.module';
     exports: [MarketsService],
  
   })
-export class MarketsModule implements NestModule{
+export class MarketsModule{}
+//  implements NestModule{
 
-  configure(consumer: MiddlewareConsumer) {
+//   configure(consumer: MiddlewareConsumer) {
 
-    consumer
-    .apply(ApiKeyMiddleware, ApiUsageMiddleware)
-    .forRoutes(MarketsController); 
-
-  }}
+//     consumer
+//     .apply(ApiKeyMiddleware, ApiUsageMiddleware)
+//     .forRoutes(MarketsController); 
+ 
+//   }}
