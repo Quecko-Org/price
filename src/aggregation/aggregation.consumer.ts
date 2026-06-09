@@ -172,7 +172,7 @@ export class AggregationConsumer implements OnModuleInit, OnModuleDestroy {
 
       // ✅ Update in-memory price cache + Redis
       const market = this.marketCache.get(symbolId);
-
+ 
       if (market?.quote === 'USD') {
         this.priceCache.updateCryptoPrice(market.base, agg.weightedClose);
         // Push to Redis so all instances and the API get updated price
