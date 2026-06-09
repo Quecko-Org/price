@@ -6,4 +6,6 @@ export const EXCHANGE_WEIGHTS = {
   BYBIT: 0.8,
   MEXC: 0.6,
   GATE: 0.5,
+  UNISWAP_V3:0.4,
+  UNISWAP_V4:0.4
 };

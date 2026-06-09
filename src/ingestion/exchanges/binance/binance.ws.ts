@@ -1,118 +1,101 @@
-import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
-import WebSocket from "ws";
-import { Exchange } from "@/common/enums/exchanges.enums";
-import { AggregationService } from "@/aggregation/aggregation.service";
+// ============================================================
+// binance.ws.ts
+// Publishes kline ticks to Kafka topic candle.raw
+// instead of calling AggregationService directly.
+// This decouples ingestion from processing — if aggregation
+// is slow or restarting, messages queue in Kafka, not lost.
+// ============================================================
+import { Injectable, Logger } from '@nestjs/common';
+import WebSocket from 'ws';
+import { Exchange } from '@/common/enums/exchanges.enums';
+import { KafkaService } from '@/common-module/kafka/kafka.service';
 
 @Injectable()
 export class BinanceWebSocket {
-
-  private readonly logger = new Logger(BinanceWebSocket.name);
-
+  private readonly logger  = new Logger(BinanceWebSocket.name);
   private sockets: WebSocket[] = [];
 
-  constructor(
-    @Inject(forwardRef(() => AggregationService))
-    private readonly aggregationService: AggregationService
-  ) {}
+  constructor(private readonly kafka: KafkaService) {}
 
   connect(
     symbols: string[],
     symbolMarketMap: Record<string, number>,
-    symbolMetaMap: Record<string, { base: string; quote: string }>
+    symbolMetaMap:   Record<string, { base: string; quote: string }>,
   ) {
-  
-    const streams = symbols
-      .map(s => `${s.toLowerCase()}@kline_1m`)
-      .join("/");
-  
-    const url = `wss://data-stream.binance.vision/stream?streams=${streams}`;
-  
+    const streams = symbols.map(s => `${s.toLowerCase()}@kline_1m`).join('/');
+    const url     = `wss://data-stream.binance.vision/stream?streams=${streams}`;
+
     let retry = 1;
     let isAlive = true;
     let pingInterval: NodeJS.Timeout;
     let reconnectTimer: NodeJS.Timeout;
-  
+
     const ws = new WebSocket(url);
-  
     this.sockets.push(ws);
-  
-    ws.on("open", () => {
+
+    ws.on('open', () => {
       retry = 1;
-      this.logger.log(`✅ Binance WS connected`);
-  
-      // ❤️ heartbeat
+      isAlive = true;
+
+      // Heartbeat: Binance closes silent connections after 24h
       pingInterval = setInterval(() => {
         if (!isAlive) {
-          this.logger.warn('💀 No pong → reconnect');
+          this.logger.warn('Binance: no pong → reconnect');
           ws.terminate();
           return;
         }
-  
         isAlive = false;
         ws.ping();
-      }, 30000);
-  
-      // ⏱️ reconnect before 24h
+      }, 30_000);
+
+      // Force reconnect before 24h limit
       reconnectTimer = setTimeout(() => {
-        this.logger.warn('♻️ Forced reconnect before 24h');
+        this.logger.log('Binance: scheduled 23h reconnect');
         ws.close();
       }, 23 * 60 * 60 * 1000);
     });
-  
-    ws.on("pong", () => {
-      isAlive = true;
-    });
-  
-    ws.on("message", msg => {
+
+    ws.on('pong', () => { isAlive = true; });
+
+    ws.on('message', msg => {
       try {
         const data = JSON.parse(msg.toString());
         if (!data?.data?.k) return;
-  
-        const k = data.data.k;
+
+        const k   = data.data.k;
         const key = `${Exchange.BINANCE}:${k.s}`;
-  
+
         const marketId = symbolMarketMap[key];
-        if (!marketId) return;
-  
-        const meta = symbolMetaMap[key];
-        if (!meta) return;
-        this.aggregationService.handleLiveCandle(
-          marketId,
-          Exchange.BINANCE,
-          {
-            exchange: Exchange.BINANCE,
-            openTime: k.t,
-            quote: meta.quote,
-            open: +k.o,
-            high: +k.h,
-            low: +k.l,
-            close: +k.c,
-            volume: +k.v,
-            isFinal: k.x,
-          }
-        );
-  
+        const meta     = symbolMetaMap[key];
+        if (!marketId || !meta) return;
+        // Fire-and-forget publish — WS handler must not await I/O
+        this.kafka.publishCandle(marketId, Exchange.BINANCE, {
+          exchange: Exchange.BINANCE,
+          openTime: k.t,
+          quote:    meta.quote,
+          open:     +k.o,
+          high:     +k.h,
+          low:      +k.l,
+          close:    +k.c,
+          volume:   +k.v,   // base volume (BTC amount) — no trust weight here
+          isFinal:  k.x,
+        }).catch(err => this.logger.error('Kafka publish failed', err));
+ 
       } catch (err) {
-        this.logger.error('Parse error', err);
+        this.logger.error('Binance parse error', err);
       }
     });
-  
-    ws.on("close", () => {
-      this.logger.warn(`❌ Binance WS closed`);
-  
+
+    ws.on('close', () => {
+      this.logger.warn('Binance WS closed');
       clearInterval(pingInterval);
       clearTimeout(reconnectTimer);
-  
-      const delay = Math.min(30000, retry * 3000);
-  
-      setTimeout(() => {
-        retry++;
-        this.connect(symbols, symbolMarketMap, symbolMetaMap);
-      }, delay);
+      const delay = Math.min(30_000, retry * 3_000);
+      setTimeout(() => { retry++; this.connect(symbols, symbolMarketMap, symbolMetaMap); }, delay);
     });
-  
-    ws.on("error", err => {
-      this.logger.error("❌ Binance WS error", err);
+
+    ws.on('error', err => {
+      this.logger.error('Binance WS error', err);
       ws.close();
     });
   }

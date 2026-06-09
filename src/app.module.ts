@@ -13,6 +13,9 @@ import { ApiModule } from './api/api.module';
 import { UserModule } from './user/user.module';
 import { ApiUsageModule } from './api-usage/api-usage.module';
 import { AdminModule } from './admin/admin.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { CronModule } from './cron/cron.module';
+import { CommonModuleModule } from './common-module/common-module.module';
 
 @Module({
   imports: [
@@ -25,18 +28,22 @@ import { AdminModule } from './admin/admin.module';
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
       autoLoadEntities: true,
-      synchronize: true, // dev only
+      synchronize: process.env.NODE_ENV !== 'production', // never in prod
     }),
-    ExchangesModule,
+    ScheduleModule.forRoot(),
+    CommonModuleModule,
+    ExchangesModule, 
     SymbolsModule,
     SyncModule,
     MarketDataModule,
+    CronModule,
     OnchainModule,
     AuthModule,
     ApiModule,
     UserModule,
     ApiUsageModule,
-    AdminModule
+    AdminModule,
+   
     
   ],
   controllers: [AppController],

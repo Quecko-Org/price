@@ -8,10 +8,13 @@ import { ApiKeyMiddleware } from '@/common/middleware/api-usage/api-key.middlewa
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiUsageEntity } from '@/api-usage/entities/api-usage.entity';
 import { ApiKeyEntity } from '../api-keys/entities/api-key.entity';
+import { TokenMetadataModule } from '../token-metadata/token-metadata.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ApiUsageEntity, ApiKeyEntity]),MarketDataModule
+    TypeOrmModule.forFeature([ApiUsageEntity, ApiKeyEntity]),
+    MarketDataModule,
+    TokenMetadataModule
   ],
 
     controllers: [MarketsController],
@@ -19,12 +22,13 @@ import { ApiKeyEntity } from '../api-keys/entities/api-key.entity';
     exports: [MarketsService],
  
   })
-export class MarketsModule implements NestModule{
+export class MarketsModule{}
+//  implements NestModule{
 
-  configure(consumer: MiddlewareConsumer) {
+//   configure(consumer: MiddlewareConsumer) {
 
-    consumer
-    .apply(ApiKeyMiddleware, ApiUsageMiddleware)
-    .forRoutes(MarketsController); 
-
-  }}
+//     consumer
+//     .apply(ApiKeyMiddleware, ApiUsageMiddleware)
+//     .forRoutes(MarketsController); 
+ 
+//   }}

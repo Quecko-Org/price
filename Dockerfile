@@ -20,6 +20,6 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src ./src
 
-EXPOSE 4000
+EXPOSE 4001
 
 CMD ["npm", "run", "start:prod"]

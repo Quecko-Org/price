@@ -11,17 +11,17 @@ function median(values: number[]) {
 }
 
 export function aggregateCandles(candles: ExchangeCandle[]) {
-
+// console.log("aggregateCandles candles",candles)
   if (!candles.length) return null;
 
-  // 1️⃣ Validate candles
-  const valid = candles.filter(c =>
-    Number.isFinite(c.open) &&
-    Number.isFinite(c.close) &&
-    Number.isFinite(c.high) &&
-    Number.isFinite(c.low) &&
-    Number.isFinite(c.volume) &&
-    c.volume > 0
+   // ── Step 1: Validate ─────────────────────────────────────────
+   const valid = candles.filter(c =>
+    Number.isFinite(c.open)   && c.open   > 0 &&
+    Number.isFinite(c.close)  && c.close  > 0 &&
+    Number.isFinite(c.high)   && c.high   > 0 &&
+    Number.isFinite(c.low)    && c.low    > 0 &&
+    Number.isFinite(c.volume) && c.volume > 0 &&
+    c.high < 10_000_000 // sanity cap
   );
 
   if (!valid.length) return null;
@@ -41,7 +41,7 @@ const filtered = valid.filter(c => {
   const highDiff = Math.abs(c.high - medianPrice) / medianPrice;
   const lowDiff  = Math.abs(c.low - medianPrice) / medianPrice;
 
-  return closeDiff < 0.05 && highDiff < 0.1 && lowDiff < 0.1;
+  return closeDiff < 0.02 && highDiff < 0.10 && lowDiff < 0.10;
 });
 
   if (!filtered.length) return null;
@@ -76,7 +76,8 @@ const filtered = valid.filter(c => {
 
 
 
-    volumeUSDT += ((c.volume * c.close) * trust);
+    volumeUSDT += (c.volume * c.close);
+    baseVolume += c.volume;         
 
     weightedCloseSum += c.close * weight;
     weightSum += weight;
@@ -86,7 +87,7 @@ const filtered = valid.filter(c => {
     ? weightedCloseSum / weightSum
     : close;
 
-   baseVolume = volumeUSDT / weightedClose;
+               // raw base amount (BTC, ETH, etc.)
 
   return {
     open,

@@ -1,113 +1,86 @@
-import WebSocket from "ws";
-import { Injectable, Logger } from "@nestjs/common";
-import { Exchange } from "@/common/enums/exchanges.enums";
-import { AggregationService } from "@/aggregation/aggregation.service";
-import { mexc } from "@frank1957/exchange-pb";
+// ============================================================
+// mexc.ws.ts
+// Publishes protobuf kline ticks to Kafka topic candle.raw
+// ============================================================
+import WebSocket from 'ws';
+import { Injectable, Logger } from '@nestjs/common';
+import { Exchange } from '@/common/enums/exchanges.enums';
+import { mexc } from '@frank1957/exchange-pb'; // This package provides the protobuf definitions for MEXC
+import { KafkaService } from '@/common-module/kafka/kafka.service';
 
 @Injectable()
 export class MexcWebSocket {
-
-  private readonly logger = new Logger(MexcWebSocket.name);
-
+  private readonly logger  = new Logger(MexcWebSocket.name);
   private sockets: WebSocket[] = [];
 
-  constructor(
-    private readonly aggregationService: AggregationService
-  ) {}
+  constructor(private readonly kafka: KafkaService) {}
 
-  private toNumber(v?: string | null) {
+  private toNumber(v?: string | null): number {
     return v ? Number(v) : 0;
   }
 
   connect(
     symbols: string[],
     symbolMarketMap: Record<string, number>,
-    symbolMetaMap: Record<string, { base: string; quote: string }>
+    symbolMetaMap:   Record<string, { base: string; quote: string }>,
   ) {
-
-    const ws = new WebSocket("wss://wbs-api.mexc.com/ws");
-
+    const ws = new WebSocket('wss://wbs-api.mexc.com/ws');
     this.sockets.push(ws);
 
-    ws.on("open", () => {
+    ws.on('open', () => {
+      const params = symbols.map(s => `spot@public.kline.v3.api.pb@${s}@Min1`);
+      ws.send(JSON.stringify({ method: 'SUBSCRIPTION', params }));
 
-      this.logger.log(`MEXC WS connected (${symbols.length})`);
-
-      const params = symbols.map(
-        s => `spot@public.kline.v3.api.pb@${s}@Min1`
-      );
-
-      ws.send(JSON.stringify({
-        method: "SUBSCRIPTION",
-        params,
-      }));
-
+      // MEXC requires a ping every 20s
       setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ method: "PING" }));
+          ws.send(JSON.stringify({ method: 'PING' }));
         }
-      }, 20000);
+      }, 20_000);
     });
 
-    ws.on("message", (data: Buffer) => {
-
+    ws.on('message', (data: Buffer) => {
       try {
-
+        // JSON frames (PONG, subscription confirmations) start with '{'
         if (data[0] === 0x7b) return;
 
         const wrapper = mexc.PushDataV3ApiWrapper.decode(data);
-
-        const kline = wrapper.publicSpotKline;
+        const kline   = wrapper.publicSpotKline;
         if (!kline) return;
 
-        const symbol = wrapper.symbol;
-
-        const key = `${Exchange.MEXC}:${symbol}`;
-
+        const key      = `${Exchange.MEXC}:${wrapper.symbol}`;
         const marketId = symbolMarketMap[key];
-        if (!marketId) return;
+        const meta     = symbolMetaMap[key];
+        if (!marketId || !meta) return;
 
-        const meta = symbolMetaMap[key];
-        if (!meta) return;
-
-        const openTime = Number(kline.windowStart) * 1000;
-
-        this.aggregationService.handleLiveCandle(
-          marketId,
-          Exchange.MEXC,
-          {
-            exchange: Exchange.MEXC,
-            openTime,
-            quote: meta.quote,
-            open: this.toNumber(kline.openingPrice),
-            high: this.toNumber(kline.highestPrice),
-            low: this.toNumber(kline.lowestPrice),
-            close: this.toNumber(kline.closingPrice),
-            volume: this.toNumber(kline.volume),
-            isFinal: false,
-          }
-        );
+        this.kafka.publishCandle(marketId, Exchange.MEXC, { 
+          exchange: Exchange.MEXC,
+          openTime: Number(kline.windowStart) * 1000,
+          quote:    meta.quote,
+          open:     this.toNumber(kline.openingPrice),
+          high:     this.toNumber(kline.highestPrice),
+          low:      this.toNumber(kline.lowestPrice),
+          close:    this.toNumber(kline.closingPrice),
+          volume:   this.toNumber(kline.volume), // base volume — no trust weight here
+          isFinal:  false,
+        }).catch(err => this.logger.error('Kafka publish failed', err));
 
       } catch (err) {
-        this.logger.error("MEXC decode error", err);
+        this.logger.error('MEXC decode error', err);
       }
     });
 
-    ws.on("close", () => {
-      this.logger.warn(`MEXC WS closed (${symbols.length})`);
-      setTimeout(() => {
-        this.connect(symbols, symbolMarketMap, symbolMetaMap);
-      }, 3000);
+    ws.on('close', () => {
+      this.logger.warn('MEXC WS closed');
+      setTimeout(() => this.connect(symbols, symbolMarketMap, symbolMetaMap), 3_000);
     });
 
-    ws.on("error", err => {
-      this.logger.error("MEXC WS error", err);
+    ws.on('error', err => {
+      this.logger.error('MEXC WS error', err);
       ws.close();
     });
   }
 }
-
-
 
 
 // import WebSocket from 'ws';

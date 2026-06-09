@@ -1,11 +1,11 @@
-import { Chain } from "./chain.enum";
+import { Chain } from "./chain.config";
 import { Dex } from "./dex.enum";
 
 export interface DexTrade {
   symbol: string;
   chain: Chain;
   dex: Dex;
-  poolAddress: string;
+  poolKey: string;
   price: number;
   volume: number;
   timestamp: number;
