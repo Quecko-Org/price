@@ -48,9 +48,7 @@ export class UniswapV3Adapter {
     mappings: PoolMarketMapping[],   // all markets this pool serves
     provider: ethers.WebSocketProvider,
   ) {
-    console.log("starttt")
     if (!mappings.length) return;
-    console.log("starttt",mappings.length)
 
     const contract = new ethers.Contract(pool.poolKey, UNISWAP3_POOL_ABI, provider);
 
@@ -76,7 +74,6 @@ export class UniswapV3Adapter {
 
           // Volume = base token amount for THIS market
           const baseVolume = m.baseIsToken0 ? Math.abs(amount0) : Math.abs(amount1);
-console.log("kafkaaaaaaaaaaaa v3")
           this.kafka.publishDexSwap({
             marketId:   m.marketId,
             exchange:   Exchange.UNISWAP_V3,

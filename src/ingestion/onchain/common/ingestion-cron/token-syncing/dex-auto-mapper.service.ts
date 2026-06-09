@@ -1,48 +1,23 @@
-// ============================================================
-// dex-auto-mapper.service.ts
-//
-// Maps ONE pool → MULTIPLE market rows (one per token with a market)
-//
-// All 4 pool combination cases after address sort:
-//
-// Case 1: base(t0) / quote(t1)   e.g. LINK(t0)/USDC(t1)
-//   → LINK-USD market: baseIsToken0=true
-//   → USDC-USD market: baseIsToken0=false
-//
-// Case 2: quote(t0) / base(t1)   e.g. ETH(t0)/LINK(t1)
-//   → ETH-USD market:  baseIsToken0=true
-//   → LINK-USD market: baseIsToken0=false
-//
-// Case 3: quote1(t0) / quote2(t1) e.g. ETH(t0)/USDC(t1)
-//   → ETH-USD market:  baseIsToken0=true
-//   → USDC-USD market: baseIsToken0=false
-//
-// Case 4: quote2(t0) / quote1(t1) e.g. USDC(t0)/ETH(t1)
-//   → USDC-USD market: baseIsToken0=true
-//   → ETH-USD market:  baseIsToken0=false
-//
-// In ALL cases: just check if each token has a market → save row.
-// No stable/quote detection needed. No direction heuristics.
-//
-// On swap, adapter calls:
-//   OnchainUtil.normalizeToUSD(price, pool, priceCache, baseIsToken0)
-// where baseIsToken0 comes from the dex_market_maps row for that market.
-// ============================================================
-import { Injectable, Logger } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
-import { MarketEntity } from "@/market-data/market.entity";
-import { DexPool } from "../../entities/pool.entityt";
-import { DexMarketMap } from "../../entities/pool-market.entity";
-import { CHAIN_CONFIGS } from "../../chain.config";
+
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { MarketEntity } from '@/market-data/market.entity';
+import { DexPool } from '../../entities/pool.entityt';
+import { DexMarketMap } from '../../entities/pool-market.entity';
+import { CHAIN_CONFIGS } from '../../chain.config';
 
 // Resolve on-chain symbol → CEX canonical symbol
 // WETH → ETH, WBTC → BTC etc.
 function resolveCanonical(token: { symbol: string; canonicalSymbol?: string }): string {
   if (token.canonicalSymbol) return token.canonicalSymbol;
   const ALIAS: Record<string, string> = {
-    WETH: "ETH", WBTC: "BTC", WBNB: "BNB",
-    WMATIC: "MATIC", POL: "MATIC", WBASE: "BASE",
+    WETH:   'ETH',
+    WBTC:   'BTC',
+    WBNB:   'BNB',
+    WMATIC: 'MATIC',
+    POL:    'MATIC',
+    WBASE:  'BASE',
   };
   return ALIAS[token.symbol] ?? token.symbol;
 }
@@ -52,106 +27,167 @@ export class DexAutoMapperService {
   private readonly logger = new Logger(DexAutoMapperService.name);
 
   constructor(
-    @InjectRepository(DexPool)      private poolRepo:   Repository<DexPool>,
-    @InjectRepository(MarketEntity) private marketRepo: Repository<MarketEntity>,
-    @InjectRepository(DexMarketMap) private mapRepo:    Repository<DexMarketMap>,
+    @InjectRepository(DexPool)      private readonly poolRepo:   Repository<DexPool>,
+    @InjectRepository(MarketEntity) private readonly marketRepo: Repository<MarketEntity>,
+    @InjectRepository(DexMarketMap) private readonly mapRepo:    Repository<DexMarketMap>,
   ) {}
 
-  // ── Full map: all pools (cron) ────────────────────────────────
-  async map() {
-    const pools     = await this.poolRepo.find({ relations: ["token0", "token1"] });
-    const marketMap = await this.buildMarketMap();
-    let total = 0;
-    for (const pool of pools) total += await this.mapPool(pool, marketMap);
-    this.logger.log(`✅ map() complete: ${total} new mappings`);
-  }
+  // ── Full map: all active pools ────────────────────────────────
+  // Returns number of new mappings created.
+  async map(): Promise<number> {
+    // Load only active + initialized pools — uninitialized pools have no price
+    const pools = await this.poolRepo.find({
+      where:     { isActive: true, isInitialized: true },
+      relations: ['token0', 'token1'],
+      select: {
+        id: true, chainId: true,
+        token0: { id: true, symbol: true, canonicalSymbol: true },
+        token1: { id: true, symbol: true, canonicalSymbol: true },
+      },
+    });
 
-  // ── Map specific pools (after V4 pool creation) ───────────────
-  async mapPoolsV4(pools: DexPool[]) {
-    if (!pools.length) return;
+    if (!pools.length) {
+      this.logger.debug('map(): no active pools to process');
+      return 0;
+    }
+
+    // Build market lookup map once
     const marketMap = await this.buildMarketMap();
-    let total = 0;
+
+    // Preload ALL existing mappings — avoids N+1 exists() queries
+    const existingMappings = await this.mapRepo.find({
+      select: ['poolId', 'marketId'],
+    });
+    const existingSet = new Set(
+      existingMappings.map(m => `${m.poolId}:${m.marketId}`)
+    );
+
+    // Collect all new mappings to insert
+    const toInsert: Partial<DexMarketMap>[] = [];
+
     for (const pool of pools) {
-      if (!pool.isInitialized) continue;
-      total += await this.mapPool(pool, marketMap);
-    }
-    if (total > 0) this.logger.log(`✅ mapPoolsV4: ${total} new mappings`);
-  }
+      if (!pool.token0 || !pool.token1) continue;
 
-  // ── Core: map one pool to ALL matching markets ────────────────
-  //
-  // For each token in the pool:
-  //   1. Resolve CEX canonical symbol (WETH→ETH)
-  //   2. Check if a market exists for that symbol (e.g. ETH-USD)
-  //   3. If yes → save dex_market_maps row with baseIsToken0 flag
-  //
-  // baseIsToken0=true  → this token IS token0 in the pool
-  // baseIsToken0=false → this token IS token1 in the pool
-  //
-  // Example — pool ETH(t0)/LINK(t1):
-  //   sym0=ETH  → ETH-USD market exists  → save {poolId, marketId, baseIsToken0: true}
-  //   sym1=LINK → LINK-USD market exists → save {poolId, marketId, baseIsToken0: false}
-  //
-  // Example — pool USDC(t0)/ETH(t1):  [USDC addr < ETH addr after sort]
-  //   sym0=USDC → USDC-USD market exists → save {poolId, marketId, baseIsToken0: true}
-  //   sym1=ETH  → ETH-USD market exists  → save {poolId, marketId, baseIsToken0: false}
-  //
-  private async mapPool(
-    pool:      DexPool,
-    marketMap: Map<string, { id: number; base: string }>,
-  ): Promise<number> {
-    const sym0      = resolveCanonical(pool.token0);
-    const sym1      = resolveCanonical(pool.token1);
-    const chainName = CHAIN_CONFIGS[pool.chainId]?.name ?? String(pool.chainId);
-    let   created   = 0;
+      const sym0 = resolveCanonical(pool.token0);
+      const sym1 = resolveCanonical(pool.token1);
 
-    // token0 check
-    const market0 = marketMap.get(sym0);
-    if (market0) {
-      if (await this.saveMapping(pool.id, market0.id, true)) {
-        this.logger.log(
-          `✅ Pool ${pool.id} [${chainName}] ${sym0}(t0)/${sym1}(t1) ` +
-          `→ market ${market0.id} (${sym0}-USD, base=token0)`
-        );
-        created++;
+      // Check token0 → market
+      const market0 = marketMap.get(sym0);
+      if (market0) {
+        const key = `${pool.id}:${market0.id}`;
+        if (!existingSet.has(key)) {
+          toInsert.push({ poolId: pool.id, marketId: market0.id, baseIsToken0: true });
+          existingSet.add(key); // prevent duplicate in same batch
+        }
+      }
+
+      // Check token1 → market
+      const market1 = marketMap.get(sym1);
+      if (market1 && market1.id !== market0?.id) {
+        const key = `${pool.id}:${market1.id}`;
+        if (!existingSet.has(key)) {
+          toInsert.push({ poolId: pool.id, marketId: market1.id, baseIsToken0: false });
+          existingSet.add(key);
+        }
       }
     }
 
-    // token1 check
-    const market1 = marketMap.get(sym1);
-    if (market1) {
-      if (await this.saveMapping(pool.id, market1.id, false)) {
-        this.logger.log(
-          `✅ Pool ${pool.id} [${chainName}] ${sym0}(t0)/${sym1}(t1) ` +
-          `→ market ${market1.id} (${sym1}-USD, base=token1)`
+    if (!toInsert.length) return 0;
+
+    // Batch insert — single query for all new mappings
+    await this.mapRepo
+      .createQueryBuilder()
+      .insert()
+      .into(DexMarketMap)
+      .values(toInsert)
+      .orIgnore() // skip duplicates gracefully
+      .execute();
+
+    // Log new mappings for visibility
+    this.logger.log(`✅ map(): ${toInsert.length} new pool→market mappings created`);
+    for (const m of toInsert.slice(0, 10)) { // log first 10 to avoid spam
+      const pool   = pools.find(p => p.id === m.poolId);
+      const market = [...marketMap.values()].find(v => v.id === m.marketId);
+      if (pool && market) {
+        const sym0 = resolveCanonical(pool.token0);
+        const sym1 = resolveCanonical(pool.token1);
+        const chain = CHAIN_CONFIGS[pool.chainId]?.name ?? pool.chainId;
+        this.logger.debug(
+          `  Pool ${m.poolId} [${chain}] ${sym0}/${sym1} ` +
+          `→ ${market.base}-USD (base=token${m.baseIsToken0 ? '0' : '1'})`
         );
-        created++;
+      }
+    }
+    if (toInsert.length > 10) {
+      this.logger.debug(`  … and ${toInsert.length - 10} more`);
+    }
+
+    return toInsert.length;
+  }
+
+  // ── Map specific pools (called after V4 pool creation) ────────
+  async mapPoolsV4(pools: DexPool[]): Promise<void> {
+    if (!pools.length) return;
+
+    const activePools = pools.filter(p => p.isInitialized);
+    if (!activePools.length) return;
+
+    const marketMap = await this.buildMarketMap();
+
+    const existingMappings = await this.mapRepo.find({
+      where:  activePools.map(p => ({ poolId: p.id })),
+      select: ['poolId', 'marketId'],
+    });
+    const existingSet = new Set(existingMappings.map(m => `${m.poolId}:${m.marketId}`));
+
+    const toInsert: Partial<DexMarketMap>[] = [];
+
+    for (const pool of activePools) {
+      if (!pool.token0 || !pool.token1) continue;
+
+      const sym0 = resolveCanonical(pool.token0);
+      const sym1 = resolveCanonical(pool.token1);
+
+      const market0 = marketMap.get(sym0);
+      if (market0) {
+        const key = `${pool.id}:${market0.id}`;
+        if (!existingSet.has(key)) {
+          toInsert.push({ poolId: pool.id, marketId: market0.id, baseIsToken0: true });
+          existingSet.add(key);
+        }
+      }
+
+      const market1 = marketMap.get(sym1);
+      if (market1 && market1.id !== market0?.id) {
+        const key = `${pool.id}:${market1.id}`;
+        if (!existingSet.has(key)) {
+          toInsert.push({ poolId: pool.id, marketId: market1.id, baseIsToken0: false });
+          existingSet.add(key);
+        }
       }
     }
 
-    return created;
+    if (toInsert.length) {
+      await this.mapRepo
+        .createQueryBuilder()
+        .insert()
+        .into(DexMarketMap)
+        .values(toInsert)
+        .orIgnore()
+        .execute();
+
+      this.logger.log(`✅ mapPoolsV4: ${toInsert.length} new mappings`);
+    }
   }
 
-  private async saveMapping(
-    poolId:       number,
-    marketId:     number,
-    baseIsToken0: boolean,
-  ): Promise<boolean> {
-    const exists = await this.mapRepo.exists({ where: { poolId, marketId } });
-    if (exists) return false;
-    await this.mapRepo.save({ poolId, marketId, baseIsToken0 });
-    return true;
-  }
-
-  // Market lookup: CEX symbol → { id, base }
-  // Only one market per symbol (first match wins)
+  // ── Build market lookup: CEX base symbol → { id, base } ──────
+  // Only one entry per base symbol — first wins.
+  // Called once per map() invocation.
   private async buildMarketMap(): Promise<Map<string, { id: number; base: string }>> {
-    const markets = await this.marketRepo.find();
+    const markets = await this.marketRepo.find({ select: ['id', 'base'] });
     const map     = new Map<string, { id: number; base: string }>();
     for (const m of markets) {
-      if (!map.has(m.base)) {
-        map.set(m.base, { id: m.id, base: m.base });
-      }
+      if (!map.has(m.base)) map.set(m.base, { id: m.id, base: m.base });
     }
     return map;
   }

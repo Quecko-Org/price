@@ -1,10 +1,4 @@
-// ============================================================
-// uniswap-v4-onchain.service.ts
-//
-// Loads dex_market_maps with baseIsToken0.
-// Registers pool + ALL its market mappings with V4 adapter.
-// One PoolManager listener handles all pools and all markets.
-// ============================================================
+// uniswap-v4-onchain.service.ts — production clean
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -27,64 +21,53 @@ export class UniswapV4OnchainService {
     private readonly adapter:   UniswapV4Adapter,
   ) {}
 
-  // ── Called by OnchainService per chain ───────────────────────
   async bootChain(chainId: Chain, provider: ethers.WebSocketProvider) {
-        console.log("v4 boot chain")
-
     const config = CHAIN_CONFIGS[chainId];
     this.logger.log(`🚀 ${config.name} V4 booting...`);
 
     await this.discovery.init(chainId);
     await this.discovery.listen(chainId, provider);
     await this.loadAndStartPools(chainId, provider);
-console.log("before loadAndStartPools")
 
+    // Backfill runs in background — doesn't block boot
     this.runBackfill(chainId, provider).catch(err =>
-      this.logger.error(`${config.name} V4 backfill failed`, err)
+      this.logger.error(`${config.name} V4 backfill failed: ${err?.message}`)
     );
 
     this.logger.log(`✅ ${config.name} V4 ready`);
-  }
+  } 
 
-  // ── Load existing pools → init → register → start ────────────
   private async loadAndStartPools(chainId: Chain, provider: ethers.WebSocketProvider) {
-console.log("loadAndStartPools")
     const config = CHAIN_CONFIGS[chainId];
 
     const pools = await this.poolRepo.find({
       where:     { dex: DexType.UNISWAP_V4, chainId },
       relations: ['token0', 'token1'],
     });
-console.log("loadAndStartPools",pools.length)
 
     this.logger.log(`📦 ${config.name} V4: ${pools.length} pools in DB`);
 
     if (!pools.length) {
-    this.logger.log(`ℹ️  ${config.name} V4: no pools yet — backfill will discover them`);
-      // Start adapter so it's ready when backfill registers pools
+      this.logger.log(`ℹ️  ${config.name} V4: no pools yet — backfill will discover them`);
       this.adapter.start(chainId, provider);
       return;
     }
-    // Subgraph TVL + StateView price init
-    // Passes chainId so adapter uses the correct subgraph endpoint
+
     await this.adapter.initializePools(pools, chainId);
 
     const topPools = pools
       .filter(p => p.isActive && (p.liquidityUsd > 1000 || p.token0Balance > 0))
       .sort((a, b) => (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0))
       .slice(0, 200);
-console.log("v4 toppool",topPools.length)
+
     await this.registerPools(topPools, chainId);
     this.adapter.start(chainId, provider);
 
     this.logger.log(`✅ ${config.name} V4 adapter live`);
   }
 
-  // ── After backfill: register newly discovered pools ───────────
   private async runBackfill(chainId: Chain, provider: ethers.WebSocketProvider) {
-
-
-    // await this.discovery.backfill(chainId, provider);
+        await this.discovery.backfill(chainId,provider); // V4 mainnet deployment block
 
     const allPools = await this.poolRepo.find({
       where:     { dex: DexType.UNISWAP_V4, chainId },
@@ -103,14 +86,12 @@ console.log("v4 toppool",topPools.length)
 
     await this.registerPools(topNew, chainId);
 
-    this.logger.log(
-      `✅ ${CHAIN_CONFIGS[chainId].name} V4: ${topNew.length} new pools registered`
-    ); 
+    if (topNew.length) {
+      this.logger.log(`✅ ${CHAIN_CONFIGS[chainId].name} V4: ${topNew.length} new pools registered`);
+    }
   }
- 
-  // ── Load mappings + register pool with adapter ────────────────
+
   private async registerPools(pools: DexPool[], chainId: Chain) {
-    console.log("pool register",pools.length)
     if (!pools.length) return;
 
     const mappings = await this.mapRepo.find({
@@ -118,8 +99,6 @@ console.log("v4 toppool",topPools.length)
       relations: ['market'],
     });
 
-    // Group: poolId → PoolMarketMapping[]
-    // Each pool has multiple rows — one per token with a market
     const mapByPool = new Map<number, PoolMarketMapping[]>();
     for (const m of mappings) {
       if (!m.market) continue;
@@ -134,10 +113,7 @@ console.log("v4 toppool",topPools.length)
     let registered = 0;
     for (const pool of pools) {
       const poolMappings = mapByPool.get(pool.id);
-      if (!poolMappings?.length) continue; // no market mapping yet
-
-      // Register pool with ALL its market mappings
-      // ETH/USDC → registers with [ETH-USD mapping, USDC-USD mapping]
+      if (!poolMappings?.length) continue;
       this.adapter.register(chainId, pool, poolMappings);
       registered++;
     }

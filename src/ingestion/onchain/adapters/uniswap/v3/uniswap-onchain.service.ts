@@ -36,7 +36,6 @@ export class UniswapV3OnchainService {
 
   // ── Called by OnchainService at boot ─────────────────────────
   async bootChain(chainId: Chain, provider: ethers.WebSocketProvider) {
-    console.log("vr3 boot chain")
     const config = CHAIN_CONFIGS[chainId];
     this.logger.log(`${config.name} V3 booting...`);
 
@@ -93,7 +92,6 @@ export class UniswapV3OnchainService {
       .filter(p => p.isActive && (p.liquidityUsd > 1000 || p.token0Balance > 0))
       .sort((a, b) => (b.liquidityUsd ?? 0) - (a.liquidityUsd ?? 0))
       .slice(0, 100);
-    console.log("vr3 topPools ",topPools.length)
 
     if (!topPools.length) return;
 

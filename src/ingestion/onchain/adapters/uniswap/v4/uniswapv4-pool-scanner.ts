@@ -32,7 +32,9 @@ const V4_DEPLOY_BLOCKS: Partial<Record<Chain, number>> = {
   [Chain.POLYGON]:  68000000,
 };
 
-const CHUNK_SIZE = 2000; // blocks per getLogs call
+
+
+const CHUNK_SIZE = 10; // blocks per getLogs call
 
 @Injectable()
 export class UniswapV4DiscoveryService {
@@ -88,83 +90,85 @@ export class UniswapV4DiscoveryService {
     this.logger.log(`👂 ${config.name} V4 listening for new pools`);
   }
 
-  // ── Historical backfill with block tracking ───────────────────
-  async backfill(chainId: Chain, provider: ethers.WebSocketProvider) {
-    await this.init(chainId);
 
-    const config     = CHAIN_CONFIGS[chainId];
-    const deployBlock = V4_DEPLOY_BLOCKS[chainId];
+async backfill(chainId: Chain, provider: ethers.WebSocketProvider): Promise<void> {
+  await this.init(chainId);
 
-    if (!deployBlock) {
-      this.logger.warn(`${config.name}: no V4 deploy block — skipping backfill`);
-      return;
-    }
+  const config      = CHAIN_CONFIGS[1];
+  const deployBlock = V4_DEPLOY_BLOCKS[chainId];
 
-    // ── Load or create sync state ─────────────────────────────
-    let syncState = await this.syncRepo.findOne({ where: { chainId } });
+  if (!deployBlock) {
+    this.logger.warn(`${config.name}: no V4 deploy block — skipping backfill`);
+    return;
+  }
 
-    if (!syncState) {
-      // First run — create record starting from deploy block
-      syncState = this.syncRepo.create({
-        chainId,
-        deployBlock,
-        lastScannedBlock: deployBlock - 1, // -1 so first run starts from deployBlock
+  let syncState = await this.syncRepo.findOne({ where: { chainId } });
+
+  if (!syncState) {
+    syncState = this.syncRepo.create({
+      chainId,
+      deployBlock,
+      lastScannedBlock: deployBlock - 1,
+    });
+    await this.syncRepo.save(syncState);
+    this.logger.log(`${config.name} V4: first run — scanning from block ${deployBlock}`);
+  } else {
+    this.logger.log(`${config.name} V4: resuming from block ${Number(syncState.lastScannedBlock) + 1}`);
+  }
+
+  // FIX: Number() cast — pg bigint comes back as string, + would concatenate
+  const startBlock = Number(syncState.lastScannedBlock) + 1;
+  const latest     = await provider.getBlockNumber();
+
+  if (startBlock > latest) {
+    this.logger.log(`${config.name} V4: already up to date (block ${latest})`);
+    return;
+  }
+
+  const totalBlocks = latest - startBlock;
+  const totalChunks = Math.ceil(totalBlocks / CHUNK_SIZE);
+  this.logger.log(
+    `🚀 ${config.name} V4 backfill: ${startBlock} → ${latest} ` +
+    `(${totalBlocks.toLocaleString()} blocks, ~${totalChunks} chunks)`
+  );
+
+  let start      = startBlock;
+  let poolsFound = 0;
+
+  while (start <= latest) {
+    const end = Math.min(start + CHUNK_SIZE - 1, latest);
+
+    try {
+      const logs = await provider.getLogs({
+        address:   config.uniswapV4PoolManager,
+        fromBlock: start,
+        toBlock:   end,
+        topics:    [INIT_EVENT_TOPIC],
       });
-      await this.syncRepo.save(syncState);
-      this.logger.log(`${config.name} V4: first run, starting from block ${deployBlock}`);
-    } else {
-      this.logger.log(
-        `${config.name} V4: resuming from block ${syncState.lastScannedBlock + 1} ` +
-        `(saved at last restart)`
-      );
-    }
 
-    const startBlock = syncState.lastScannedBlock + 1;
-    const latest     = await provider.getBlockNumber();
-
-    if (startBlock > latest) { 
-      this.logger.log(`${config.name} V4: already up to date (block ${latest})`);
-      return;
-    }
-
-    this.logger.log(`🚀 ${config.name} V4 backfill: ${startBlock} → ${latest}`);
-
-    let start = startBlock;
-
-    while (start <= latest) {
-      const end = Math.min(start + CHUNK_SIZE - 1, latest);
-
-      try {
-        const logs = await provider.getLogs({
-          address:   config.uniswapV4PoolManager,
-          fromBlock: start,
-          toBlock:   end,
-          topics:    [INIT_EVENT_TOPIC],
-        });
-
-        if (logs.length) {
-          this.logger.log(`📦 ${config.name} ${start}→${end}: ${logs.length} pools`);
-        }
-
-        for (const log of logs) {
-          await this.processLog(log, chainId);
-        }
-
-        // ✅ Update last scanned block after each successful chunk
-        syncState.lastScannedBlock = end;
-        await this.syncRepo.save(syncState);
-
-      } catch (err) {
-        this.logger.error(`${config.name} backfill chunk ${start}-${end} failed`, err);
-        // Don't advance — retry same chunk on next restart
-        await new Promise(r => setTimeout(r, 500));
+      if (logs.length) {
+        this.logger.log(`📦 ${config.name} ${start}→${end}: ${logs.length} pools`);
+        poolsFound += logs.length;
       }
 
-      start = end + 1;
+      for (const log of logs) {
+        await this.processLog(log, chainId);
+      }
+
+      // FIX: cast end to number before saving
+      syncState.lastScannedBlock = end;
+      await this.syncRepo.save(syncState);
+
+    } catch (err: any) {
+      this.logger.error(`${config.name} chunk ${start}→${end} failed: ${err?.message}`);
+      await new Promise(r => setTimeout(r, 1000));
     }
 
-    this.logger.log(`✅ ${config.name} V4 backfill complete — at block ${latest}`);
+    start = end + 1;
   }
+
+  this.logger.log(`✅ ${config.name} V4 backfill complete — at block ${latest}, ${poolsFound} pools`);
+}
 
   // ── Process one Initialize log ────────────────────────────────
   async processLog(log: ethers.Log, chainId: Chain) {

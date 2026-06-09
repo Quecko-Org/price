@@ -13,10 +13,13 @@ import { DexAutoMapperService } from "./token-syncing/dex-auto-mapper.service";
 import { TokenSyncService } from "./token-syncing/token-sync.service";
 import { UniswapDiscoveryService } from "../../adapters/uniswap/v3/uniswap-pool-scanner.service";
 import { EthereumProvider } from "../../providers/ethereum.provider";
+import { CommonModuleModule } from "@/common-module/common-module.module";
 
 @Module({
   imports: [TypeOrmModule.forFeature([SymbolEntity, Token, DexPool, MarketEntity, DexMarketMap]),
-    SymbolsModule
+    SymbolsModule,
+        CommonModuleModule,
+
 
   ],
   providers: [IngestionCronService, TokenSyncService,

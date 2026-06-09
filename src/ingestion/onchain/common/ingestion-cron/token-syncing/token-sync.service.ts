@@ -1,57 +1,37 @@
-// ============================================================
-// token-sync.service.ts
-//
-// Syncs tokens for ALL enabled chains.
-// Each chain has its own token list source:
-//   Ethereum  → https://tokens.uniswap.org (chainId 1)
-//   BSC       → https://tokens.pancakeswap.finance/coingecko.json
-//   Arbitrum  → https://tokens.uniswap.org (chainId 42161)
-//   Polygon   → https://tokens.uniswap.org (chainId 137)
-//   Base      → https://tokens.uniswap.org (chainId 8453)
-//   Optimism  → https://tokens.uniswap.org (chainId 10)
-//
-// Also seeds native tokens (ETH, BNB etc.) which don't appear
-// in token lists but are needed for V4 pool discovery.
-// ============================================================
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Token } from "../../entities/token.entity";
 import { SymbolsService } from "@/ingestion/symbols/symbol.service";
+import { RedisService } from "@/common-module/redis/redis.service";
 import { STABLES, WRAPPED } from "../../common-tokens";
 import { Chain, CHAIN_CONFIGS, getEnabledChains } from "../../chain.config";
+import * as crypto from "crypto";
 
-// CEX symbol → on-chain symbol mapping per chain
 const WRAPPED_MAP: Record<string, string> = {
-  BTC:   "WBTC",
-  ETH:   "WETH",
-  MATIC: "POL",
-  BNB:   "WBNB",
+  BTC: "WBTC", ETH: "WETH", MATIC: "POL", BNB: "WBNB",
 };
 
-// Native tokens for each chain — needed for V4 address(0) pools
-// These are NOT in any token list
 const NATIVE_TOKENS: Record<Chain, { symbol: string; canonicalSymbol: string; decimals: number }> = {
-  [Chain.ETHEREUM]: { symbol: "ETH",  canonicalSymbol: "ETH",  decimals: 18 },
-  [Chain.BSC]:      { symbol: "BNB",  canonicalSymbol: "BNB",  decimals: 18 },
-  [Chain.ARBITRUM]: { symbol: "ETH",  canonicalSymbol: "ETH",  decimals: 18 },
+  [Chain.ETHEREUM]: { symbol: "ETH",   canonicalSymbol: "ETH",   decimals: 18 },
+  [Chain.BSC]:      { symbol: "BNB",   canonicalSymbol: "BNB",   decimals: 18 },
+  [Chain.ARBITRUM]: { symbol: "ETH",   canonicalSymbol: "ETH",   decimals: 18 },
   [Chain.POLYGON]:  { symbol: "MATIC", canonicalSymbol: "MATIC", decimals: 18 },
-  [Chain.BASE]:     { symbol: "ETH",  canonicalSymbol: "ETH",  decimals: 18 },
-  [Chain.OPTIMISM]: { symbol: "ETH",  canonicalSymbol: "ETH",  decimals: 18 },
+  [Chain.BASE]:     { symbol: "ETH",   canonicalSymbol: "ETH",   decimals: 18 },
+  [Chain.OPTIMISM]: { symbol: "ETH",   canonicalSymbol: "ETH",   decimals: 18 },
 };
 
-// Token list sources per chain
-// Uniswap list covers all chains except BSC (PancakeSwap uses its own)
 const TOKEN_LIST_SOURCES: Partial<Record<Chain, { url: string; chainId: number }>> = {
-  [Chain.ETHEREUM]: { url: "https://tokens.uniswap.org",                                    chainId: 1      },
-  [Chain.BSC]:      { url: "https://tokens.pancakeswap.finance/pancakeswap-extended.json",  chainId: 56     },
-  [Chain.ARBITRUM]: { url: "https://tokens.uniswap.org",                                    chainId: 42161  },
-  [Chain.POLYGON]:  { url: "https://tokens.uniswap.org",                                    chainId: 137    },
-  [Chain.BASE]:     { url: "https://tokens.uniswap.org",                                    chainId: 8453   },
-  [Chain.OPTIMISM]: { url: "https://tokens.uniswap.org",                                    chainId: 10     },
+  [Chain.ETHEREUM]: { url: "https://tokens.uniswap.org",                                   chainId: 1     },
+  [Chain.BSC]:      { url: "https://tokens.pancakeswap.finance/pancakeswap-extended.json", chainId: 56    },
+  [Chain.ARBITRUM]: { url: "https://tokens.uniswap.org",                                   chainId: 42161 },
+  [Chain.POLYGON]:  { url: "https://tokens.uniswap.org",                                   chainId: 137   },
+  [Chain.BASE]:     { url: "https://tokens.uniswap.org",                                   chainId: 8453  },
+  [Chain.OPTIMISM]: { url: "https://tokens.uniswap.org",                                   chainId: 10    },
 };
 
 const NATIVE_ETH_ADDRESS = "0x0000000000000000000000000000000000000000";
+const SKIP_SYMBOLS = new Set(["USD", "USDC.e", "USDT.e"]);
 
 @Injectable()
 export class TokenSyncService {
@@ -61,47 +41,42 @@ export class TokenSyncService {
     @InjectRepository(Token)
     private tokenRepo: Repository<Token>,
     private readonly symbolsService: SymbolsService,
+    private readonly redis: RedisService,
   ) {}
 
   private mapSymbol(symbol: string): string {
     return WRAPPED_MAP[symbol] ?? symbol;
   }
 
-  // ── Called by cron: sync ALL enabled chains ─────────────────
   async sync() {
     const enabled = getEnabledChains();
-    this.logger.log(`🔄 Token sync starting for ${enabled.length} chains: ${enabled.map(c => c.name).join(', ')}`);
+    this.logger.log(`🔄 Token sync for ${enabled.length} chains: ${enabled.map(c => c.name).join(", ")}`);
 
-    // Get CEX markets once — same markets across all chains
     const markets = await this.symbolsService.markets();
 
     const neededSymbols = new Set<string>();
     for (const m of markets) {
       neededSymbols.add(m.base);
-      neededSymbols.add(m.quote);
     }
     STABLES.forEach(s => neededSymbols.add(s));
+    for (const s of SKIP_SYMBOLS) neededSymbols.delete(s);
 
-    this.logger.log(`📋 ${neededSymbols.size} symbols needed from CEX markets`);
+    this.logger.log(`📋 ${neededSymbols.size} symbols needed`);
 
-    // Sync each enabled chain
     for (const chain of enabled) {
       await this.syncChain(chain.chainId, neededSymbols);
     }
 
-    this.logger.log('✅ Token sync complete for all chains');
+    this.logger.log("✅ Token sync complete");
   }
 
-  // ── Sync one chain ──────────────────────────────────────────
   async syncChain(chainId: Chain, neededSymbols: Set<string>) {
     const config = CHAIN_CONFIGS[chainId];
     this.logger.log(`🔄 ${config.name} token sync...`);
 
     try {
-      // Step 1: Seed native token (address(0)) for V4
       await this.seedNativeToken(chainId);
 
-      // Step 2: Fetch token list for this chain
       const source = TOKEN_LIST_SOURCES[chainId];
       if (!source) {
         this.logger.warn(`${config.name}: no token list source configured`);
@@ -114,58 +89,78 @@ export class TokenSyncService {
         return;
       }
 
+      // ── HASH CHECK ─────────────────────────────────────────────
+      // MD5 of sorted token addresses — changes only when tokens are
+      // added or removed from the list (rare, maybe monthly).
+      // On hash match: skip all DB work — zero queries, ~1ms total.
+      const hash     = this.hashList(tokenList);
+      const lastHash = await this.redis.get(`token-sync:hash:${chainId}`).catch(() => null);
+
+      if (lastHash === hash) {
+        this.logger.log(`${config.name}: token list unchanged — skipping`);
+        return;
+      }
+
       this.logger.log(`${config.name}: ${tokenList.length} tokens in list`);
 
-      // Build symbol → token[] map
       const tokenMap = new Map<string, any[]>();
       for (const t of tokenList) {
+        if (!t.symbol) continue;
         if (!tokenMap.has(t.symbol)) tokenMap.set(t.symbol, []);
         tokenMap.get(t.symbol)!.push(t);
       }
 
-      // Preload existing tokens for this chain to avoid N+1 queries
-      const existing = await this.tokenRepo.find({ where: { chainId } });
+      const existing         = await this.tokenRepo.find({ where: { chainId } });
       const existingByAddress = new Map(existing.map(t => [t.address.toLowerCase(), t]));
 
-      let saved = 0;
+      const toSave: Partial<Token>[] = [];
 
       for (const symbol of neededSymbols) {
-        if (WRAPPED.includes(symbol)) continue; // WETH/WBTC added via BTC/ETH mapping
+        if (WRAPPED.includes(symbol)) continue;
 
-        const mapped     = this.mapSymbol(symbol);  // ETH → WETH, BTC → WBTC
+        const mapped     = this.mapSymbol(symbol);
         const candidates = tokenMap.get(mapped);
-
         if (!candidates?.length) continue;
 
-        // Pick best candidate — most extensions = most trusted (canonical listing)
         const tokenMeta = candidates.reduce((best: any, t: any) =>
-          Object.keys(t.extensions ?? {}).length >= Object.keys(best.extensions ?? {}).length
-            ? t : best
+          Object.keys(t.extensions ?? {}).length >= Object.keys(best.extensions ?? {}).length ? t : best
         );
 
         if (existingByAddress.has(tokenMeta.address.toLowerCase())) continue;
 
-        await this.tokenRepo.save({
+        toSave.push({
           chain:           config.name,
           chainId,
           address:         tokenMeta.address.toLowerCase(),
-          symbol:          tokenMeta.symbol,    // WETH (on-chain name)
-          canonicalSymbol: symbol,              // ETH  (CEX name)
+          symbol:          tokenMeta.symbol,
+          canonicalSymbol: symbol,
           decimals:        tokenMeta.decimals,
         });
 
         existingByAddress.set(tokenMeta.address.toLowerCase(), tokenMeta);
-        saved++;
       }
 
-      this.logger.log(`✅ ${config.name}: ${saved} new tokens saved`);
+      if (toSave.length) {
+        await this.tokenRepo
+          .createQueryBuilder()
+          .insert()
+          .into(Token)
+          .values(toSave)
+          .orIgnore()
+          .execute();
+        this.logger.log(`✅ ${config.name}: ${toSave.length} new tokens saved`);
+      } else {
+        this.logger.log(`✅ ${config.name}: no new tokens`);
+      }
 
-    } catch (err) {
-      this.logger.error(`${config.name} token sync failed`, err);
+      // Save hash only after successful sync
+      await this.redis.setex(`token-sync:hash:${chainId}`, 86_400, hash).catch(() => null);
+
+    } catch (err: any) {
+      this.logger.error(`${config.name} token sync failed: ${err?.message}`);
     }
   }
 
-  // ── Seed native token (address zero) for V4 ────────────────
   private async seedNativeToken(chainId: Chain) {
     const native = NATIVE_TOKENS[chainId];
     if (!native) return;
@@ -173,7 +168,6 @@ export class TokenSyncService {
     const exists = await this.tokenRepo.exists({
       where: { address: NATIVE_ETH_ADDRESS, chainId },
     });
-
     if (exists) return;
 
     await this.tokenRepo.save({
@@ -185,27 +179,25 @@ export class TokenSyncService {
       decimals:        native.decimals,
     });
 
-    this.logger.log(`✅ ${CHAIN_CONFIGS[chainId].name}: seeded native ${native.symbol} (address zero)`);
+    this.logger.log(`✅ ${CHAIN_CONFIGS[chainId].name}: seeded native ${native.symbol}`);
   }
 
-  // ── Fetch token list from URL ───────────────────────────────
   private async fetchTokenList(url: string, chainId: number): Promise<any[]> {
     try {
       const res  = await fetch(url);
-      if (!res.ok) {
-        this.logger.error(`Token list fetch failed: ${url} → ${res.status}`);
-        return [];
-      }
+      if (!res.ok) { this.logger.error(`Token list fetch failed: ${url} → ${res.status}`); return []; }
       const data = await res.json();
-
-      // Uniswap list shape: { tokens: [...] }
-      // PancakeSwap list shape: { tokens: [...] } or flat array
-      const raw = Array.isArray(data) ? data : (data.tokens ?? []);
+      const raw  = Array.isArray(data) ? data : (data.tokens ?? []);
       return raw.filter((t: any) => t.chainId === chainId);
-
-    } catch (err) {
-      this.logger.error(`Token list fetch error: ${url}`, err);
+    } catch (err: any) {
+      this.logger.error(`Token list fetch error (${url}): ${err?.message}`);
       return [];
     }
+  }
+
+  // MD5 of sorted addresses — fast, deterministic
+  private hashList(tokens: any[]): string {
+    const sorted = tokens.map(t => t.address?.toLowerCase() ?? "").sort().join(",");
+    return crypto.createHash("md5").update(sorted).digest("hex");
   }
 }

@@ -1,34 +1,28 @@
-// ============================================================
 // chain-sync-state.entity.ts
-//
-// Stores the last successfully scanned block per chain.
-// V4 backfill reads this to resume where it left off after restart.
-//
-// Without this: every restart re-scans from V4 deployment block
-// (block 21688329 for Ethereum = millions of blocks = hours).
-// With this: restart resumes from last_scanned_block in seconds.
-// ============================================================
+// FIX: bigint columns return string from pg driver.
+// Added ValueTransformer to auto-convert to Number on read.
 import { Entity, Column, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { Chain } from '../chain.config';
+
+// Transformer applied to every bigint column.
+// pg driver returns bigint as string — this converts it back to number on read.
+const bigintTransformer = {
+  to:   (v: number) => v,           // write: number → pg stores as bigint
+  from: (v: string | number) => Number(v), // read: string → number
+};
 
 @Entity('chain_sync_state')
 export class ChainSyncStateEntity {
 
-    /** chainId — primary key (one row per chain) */
-    @PrimaryColumn({
-        type: 'enum',
-        enum: Chain
-    })
-    chainId: Chain;
+  @PrimaryColumn({ type: 'enum', enum: Chain })
+  chainId: Chain;
 
-    /** Last block successfully processed during V4 backfill */
-    @Column({ type: 'bigint', default: 0 })
-    lastScannedBlock: number;
+  @Column({ type: 'bigint', default: 0, transformer: bigintTransformer })
+  lastScannedBlock: number;
 
-    /** Block number where V4 was deployed (starting point if DB empty) */
-    @Column({ type: 'bigint', default: 0 })
-    deployBlock: number;
+  @Column({ type: 'bigint', default: 0, transformer: bigintTransformer })
+  deployBlock: number;
 
-    @UpdateDateColumn({ type: 'timestamptz' })
-    updatedAt: Date;
+  @UpdateDateColumn({ type: 'timestamptz' })
+  updatedAt: Date;
 }

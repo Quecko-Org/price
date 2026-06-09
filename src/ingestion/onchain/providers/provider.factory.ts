@@ -248,12 +248,13 @@ export class ChainProviderFactory implements OnModuleInit {
   }
   private chainPublicNode(chainId: Chain): string {
     const m: Partial<Record<Chain, string>> = {
-      [Chain.ETHEREUM]: 'ethereum.publicnode.com',
+  
+      [Chain.ETHEREUM]: 'eth-mainnet.g.alchemy.com/v2/TqeuB41KCR56GXskMrTPv',
       [Chain.BSC]:      'bsc.publicnode.com',
-      [Chain.ARBITRUM]: 'arbitrum.publicnode.com',
-      [Chain.POLYGON]:  'polygon.publicnode.com',
-      [Chain.BASE]:     'base.publicnode.com',
-      [Chain.OPTIMISM]: 'optimism.publicnode.com',
+      [Chain.ARBITRUM]: 'arb-mainnet.g.alchemy.com/v2/TqeuB41KCR56GXskMrTPv',
+      [Chain.POLYGON]:  'polygon-mainnet.g.alchemy.com/TqeuB41KCR56GXskMrTPv',
+      [Chain.BASE]:     'base-mainnet.g.alchemy.com/TqeuB41KCR56GXskMrTPv',
+      [Chain.OPTIMISM]: 'opt-mainnet.g.alchemy.com/TqeuB41KCR56GXskMrTPv',
     };
     return m[chainId] ?? 'publicnode.com';
   }

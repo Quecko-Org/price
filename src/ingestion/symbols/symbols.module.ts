@@ -7,6 +7,7 @@ import { SymbolExchangeEntity } from './entities/symbol-exchange.entity';
 import { SymbolsService } from './symbol.service';
 import { FxRateEntity } from './entities/fx-rate.entity';
 import { MarketEntity } from '@/market-data/market.entity';
+import { CommonModuleModule } from '@/common-module/common-module.module';
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import { MarketEntity } from '@/market-data/market.entity';
         FxRateEntity,
         MarketEntity
       ]),
+      CommonModuleModule
     ],
     providers: [SymbolsService],
     exports: [SymbolsService], 

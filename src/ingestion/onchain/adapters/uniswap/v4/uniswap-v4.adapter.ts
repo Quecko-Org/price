@@ -47,10 +47,8 @@ export class UniswapV4Adapter {
   }
 
   start(chainId: Chain, provider: ethers.WebSocketProvider) {
-    console.log("start v4444")
     if (this.startedChains.has(chainId)) return;
     this.startedChains.add(chainId);
-    console.log("start v4444 a")
 
     const config   = CHAIN_CONFIGS[chainId];
     const contract = new ethers.Contract(
