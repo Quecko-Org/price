@@ -1,5 +1,3 @@
-
-
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
@@ -12,19 +10,21 @@ import { JwtStrategy } from './jwt.strategy';
 import { PlanEntity } from '@/api/v1/payments/entities/payemnt-plan';
 import { UserModule } from '@/user/user.module';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
+console.log('[AuthModule] JWT_SECRET =', JSON.stringify(JWT_SECRET));
+
 @Module({
   imports: [
-    TypeOrmModule.forFeature([UserEntity,PlanEntity]),
+    TypeOrmModule.forFeature([UserEntity, PlanEntity]),
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'supersecretkey',
-      signOptions: { expiresIn: '1d' },
+      secret:       JWT_SECRET,
+      signOptions:  { expiresIn: '30d' },
     }),
-    UserModule
+    UserModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService,MailService,JwtStrategy,],
-  exports: [JwtModule],
-
+  providers:   [AuthService, MailService, JwtStrategy],
+  exports:     [JwtModule],
 })
 export class AuthModule {}

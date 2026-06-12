@@ -1,31 +1,26 @@
 import { UserService } from '@/user/user.service';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { NotFoundError } from 'rxjs';
+
+// Read once at module load — log it so you can see what value is actually used
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
+console.log('[JwtStrategy] secretOrKey =', JSON.stringify(JWT_SECRET));
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-
-  constructor(    private readonly usersService: UserService,
-    ) {
-
+  constructor(private readonly usersService: UserService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), // read token from header
+      jwtFromRequest:   ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'supersecretkey',
+      secretOrKey:      JWT_SECRET,   // use the const, never undefined
     });
   }
-  async validate(payload: any) {
-    const user = await this.usersService.user(payload.sub); // fetch full user from DB
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    return {
-      id: payload.sub,
-      email: payload.email,
-      role:user.role
 
-    };
+  async validate(payload: any) {
+    console.log('[JwtStrategy] validate called, payload.sub =', payload.sub);
+    const user = await this.usersService.user(payload.sub);
+    if (!user) throw new UnauthorizedException('User not found');
+    return { id: payload.sub, email: payload.email, role: user.role };
   }
 }
