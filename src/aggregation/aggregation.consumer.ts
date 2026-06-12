@@ -37,7 +37,11 @@ export class AggregationConsumer implements OnModuleInit, OnModuleDestroy {
 
   private readonly kafka = new Kafka({
     clientId: 'price-aggregator-consumer',
-    brokers:  (process.env.KAFKA_BROKERS ?? 'localhost:9092').split(','),
+       brokers: (
+      process.env.KAFKA_BROKERS ??
+      process.env.KAFKA_BOOTSTRAP_SERVERS ??
+      'localhost:9092'
+    ).split(','),
   });
 
   constructor(
