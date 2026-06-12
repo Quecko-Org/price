@@ -50,81 +50,96 @@ export class MarketsRepository {
   // Paginated list of all markets with price + 24h stats
   // Used by: GET /api/v1/markets/list
   async getMarketList(opts: {
-    page:   number;
-    limit:  number;
-    sort:   string;
-    order:  string;
-    search?: string;
-  }) {
-    const { page, limit, sort, order, search } = opts;
-    const offset = (page - 1) * limit;
+  page:    number;
+  limit:   number;
+  sort:    string;
+  order:   string;
+  search?: string;
+}) {
+  const { page, limit, sort, order, search } = opts;
+  const offset = (page - 1) * limit;
 
-    // Whitelist sort columns to prevent SQL injection
-    const sortMap: Record<string, string> = {
-      volume24hUsd: 'volume24h',
-      price:        'last_price',
-      change24h:    'change_pct',
-      marketId:     'm.id',
-    };
-    const sortCol = sortMap[sort] ?? 'volume24h';
-    const sortDir = order === 'asc' ? 'ASC' : 'DESC';
+  // Map frontend sort keys → the exact column alias used in the outer SELECT
+  // Must match the AS aliases in the SELECT list exactly
+  const sortMap: Record<string, string> = {
+    volume24hUsd: '"volume24hUsd"',  // matches AS "volume24hUsd"
+    price:        'price',
+    change24h:    '"change24h"',
+    marketId:     '"marketId"',
+    high24h:      '"high24h"',
+    low24h:       '"low24h"',
+  };
+  const sortCol = sortMap[sort] ?? '"volume24hUsd"';
+  const sortDir = order === 'asc' ? 'ASC' : 'DESC';
 
-    const searchClause = search ? `AND m.base ILIKE $3` : '';
-    const params: any[] = [limit, offset];
-    if (search) params.push(`${search}%`);
+  const searchClause = search ? `AND m.base ILIKE $3` : '';
+  const params: any[] = [limit, offset];
+  if (search) params.push(`${search}%`);
 
-    const rows = await this.dataSource.query(`
-      WITH stats AS (
-        SELECT
-          "marketId",
-          first(open, "openTime")   AS open_price,
-          last(close, "openTime")   AS last_price,
-          max(high)                 AS high24h,
-          min(low)                  AS low24h,
-          sum("volumeUSDT")         AS volume24h,
-          sum("baseVolume")         AS volume_base
-        FROM aggregated_candles_1m
-        WHERE "openTime" >= NOW() - INTERVAL '24 hours'
-        GROUP BY "marketId"
-      )
+  const rows = await this.dataSource.query(`
+    WITH stats AS (
       SELECT
-        m.id          AS "marketId",
-        m.base        AS symbol,
-        m.quote,
-        m.symbol      AS pair,
-        COALESCE(s.last_price, 0)::float  AS price,
-        COALESCE(s.high24h, 0)::float     AS "high24h",
-        COALESCE(s.low24h, 0)::float      AS "low24h",
-        COALESCE(s.volume24h, 0)::float   AS "volume24hUsd",
-        COALESCE(s.volume_base, 0)::float AS "volume24hBase",
-        CASE WHEN s.open_price > 0
-          THEN ROUND(((s.last_price - s.open_price) / s.open_price * 100)::numeric, 2)
-          ELSE 0
-        END::float  AS "change24h",
-        (SELECT COUNT(*) FROM dex_pools p
-          INNER JOIN tokens t ON (t.id = p."token0_id" OR t.id = p."token1_id")
-          WHERE t."canonicalSymbol" = m.base AND p."isActive" = true
-        )::int       AS "dexPoolCount",
-        (SELECT COALESCE(SUM(p."liquidityUsd"), 0) FROM dex_pools p
-          INNER JOIN tokens t ON (t.id = p."token0_id" OR t.id = p."token1_id")
-          WHERE t."canonicalSymbol" = m.base AND p."isActive" = true
-        )::float     AS "totalDexLiquidity"
-      FROM markets m
-      LEFT JOIN stats s ON s."marketId" = m.id
-      WHERE 1=1 ${searchClause}
-      ORDER BY ${sortCol} ${sortDir}
-      LIMIT $1 OFFSET $2`, params);
+        "marketId",
+        first(open,  "openTime") AS open_price,
+        last(close,  "openTime") AS last_price,
+        max(high)                AS high24h,
+        min(low)                 AS low24h,
+        sum("volumeUSDT")        AS volume24h,
+        sum("baseVolume")        AS volume_base
+      FROM aggregated_candles_1m
+      WHERE "openTime" >= NOW() - INTERVAL '24 hours'
+      GROUP BY "marketId"
+    )
+    SELECT
+      m.id            AS "marketId",
+      m.base          AS symbol,
+      m.quote,
+      m.symbol        AS pair,
+      COALESCE(s.last_price, 0)::float  AS price,
+      COALESCE(s.high24h,    0)::float  AS "high24h",
+      COALESCE(s.low24h,     0)::float  AS "low24h",
+      COALESCE(s.volume24h,  0)::float  AS "volume24hUsd",
+      COALESCE(s.volume_base,0)::float  AS "volume24hBase",
+      CASE
+        WHEN COALESCE(s.open_price, 0) > 0
+        THEN ROUND(((s.last_price - s.open_price) / s.open_price * 100)::numeric, 2)
+        ELSE 0
+      END::float AS "change24h",
+      (
+        SELECT COUNT(*)
+        FROM dex_pools p
+        JOIN tokens t ON (t.id = p."token0_id" OR t.id = p."token1_id")
+        WHERE t."canonicalSymbol" = m.base AND p."isActive" = true
+      )::int AS "dexPoolCount",
+      (
+        SELECT COALESCE(SUM(p."liquidityUsd"), 0)
+        FROM dex_pools p
+        JOIN tokens t ON (t.id = p."token0_id" OR t.id = p."token1_id")
+        WHERE t."canonicalSymbol" = m.base AND p."isActive" = true
+      )::float AS "totalDexLiquidity"
+    FROM markets m
+    LEFT JOIN stats s ON s."marketId" = m.id
+    WHERE 1=1 ${searchClause}
+    ORDER BY ${sortCol} ${sortDir} NULLS LAST
+    LIMIT $1 OFFSET $2
+  `, params);
 
-    const [countRow] = await this.dataSource.query(`
-      SELECT COUNT(*)::int AS total FROM markets m
-      WHERE 1=1 ${search ? `AND m.base ILIKE $1` : ''}`,
-      search ? [`${search}%`] : []);
+  const [countRow] = await this.dataSource.query(`
+    SELECT COUNT(*)::int AS total
+    FROM markets m
+    WHERE 1=1 ${search ? `AND m.base ILIKE $1` : ''}
+  `, search ? [`${search}%`] : []);
 
-    return {
-      data:  rows,
-      meta:  { total: countRow.total, page, limit, pages: Math.ceil(countRow.total / limit) },
-    };
-  }
+  return {
+    data: rows,
+    meta: {
+      total: countRow.total,
+      page,
+      limit,
+      pages: Math.ceil(countRow.total / limit),
+    },
+  };
+}
 
   // ── NEW: EXTENDED STATS (7d + 30d) ───────────────────────────
   async getExtendedStats(marketId: number) {
