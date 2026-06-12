@@ -29,8 +29,8 @@ import { TOPICS, RawCandleMessage, DexSwapMessage, FxRateMessage } from '@/commo
 export class AggregationConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger  = new Logger(AggregationConsumer.name);
   private readonly buffer  = new LiveCandleBuffer();
-  private consumer: Consumer;
-  private flushTimer: NodeJS.Timeout;
+  private consumer!:Consumer;
+  private flushTimer!: NodeJS.Timeout;
 
   // marketId → { base, quote }
   private marketCache = new Map<number, { base: string; quote: string }>();
