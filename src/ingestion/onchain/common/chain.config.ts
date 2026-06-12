@@ -23,7 +23,7 @@ export enum DexType {
   PANCAKESWAP_V3 = 'PANCAKESWAP_V3', // BSC equivalent of Uniswap V3
 }
 
-export interface ChainConfig {
+export interface ChainConfig { 
   chainId:              Chain;
   name:                 string;
   wsEnvKey:             string;   // process.env key for WS RPC URL

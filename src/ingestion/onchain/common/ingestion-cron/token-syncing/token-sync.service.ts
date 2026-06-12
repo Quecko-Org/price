@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
+import axios from "axios";
 import { Token } from "../../entities/token.entity";
 import { SymbolsService } from "@/ingestion/symbols/symbol.service";
 import { RedisService } from "@/common-module/redis/redis.service";
@@ -57,7 +58,7 @@ export class TokenSyncService {
     const neededSymbols = new Set<string>();
     for (const m of markets) {
       neededSymbols.add(m.base);
-    }
+    } 
     STABLES.forEach(s => neededSymbols.add(s));
     for (const s of SKIP_SYMBOLS) neededSymbols.delete(s);
 
@@ -84,17 +85,15 @@ export class TokenSyncService {
       }
 
       const tokenList = await this.fetchTokenList(source.url, source.chainId);
+      console.log("tokenlisttt",tokenList.length,chainId)
       if (!tokenList.length) {
         this.logger.warn(`${config.name}: empty token list`);
         return;
       }
 
-      // ── HASH CHECK ─────────────────────────────────────────────
-      // MD5 of sorted token addresses — changes only when tokens are
-      // added or removed from the list (rare, maybe monthly).
-      // On hash match: skip all DB work — zero queries, ~1ms total.
       const hash     = this.hashList(tokenList);
       const lastHash = await this.redis.get(`token-sync:hash:${chainId}`).catch(() => null);
+      console.log("tokenlisttt",tokenList.length,chainId,hash,lastHash)
 
       if (lastHash === hash) {
         this.logger.log(`${config.name}: token list unchanged — skipping`);
@@ -102,7 +101,7 @@ export class TokenSyncService {
       }
 
       this.logger.log(`${config.name}: ${tokenList.length} tokens in list`);
-
+ 
       const tokenMap = new Map<string, any[]>();
       for (const t of tokenList) {
         if (!t.symbol) continue;
@@ -110,7 +109,7 @@ export class TokenSyncService {
         tokenMap.get(t.symbol)!.push(t);
       }
 
-      const existing         = await this.tokenRepo.find({ where: { chainId } });
+      const existing          = await this.tokenRepo.find({ where: { chainId } });
       const existingByAddress = new Map(existing.map(t => [t.address.toLowerCase(), t]));
 
       const toSave: Partial<Token>[] = [];
@@ -153,7 +152,6 @@ export class TokenSyncService {
         this.logger.log(`✅ ${config.name}: no new tokens`);
       }
 
-      // Save hash only after successful sync
       await this.redis.setex(`token-sync:hash:${chainId}`, 86_400, hash).catch(() => null);
 
     } catch (err: any) {
@@ -182,20 +180,25 @@ export class TokenSyncService {
     this.logger.log(`✅ ${CHAIN_CONFIGS[chainId].name}: seeded native ${native.symbol}`);
   }
 
+  // FIX: replaced fetch() with axios — fetch() follows redirects and hits 414.
+  // axios handles redirects correctly and is already used everywhere else.
   private async fetchTokenList(url: string, chainId: number): Promise<any[]> {
     try {
-      const res  = await fetch(url);
-      if (!res.ok) { this.logger.error(`Token list fetch failed: ${url} → ${res.status}`); return []; }
-      const data = await res.json();
+      const res  = await axios.get(url, {
+        timeout: 15_000,
+        headers: { 'Accept': 'application/json' },
+        maxRedirects: 5,
+      });
+      const data = res.data;
       const raw  = Array.isArray(data) ? data : (data.tokens ?? []);
       return raw.filter((t: any) => t.chainId === chainId);
+    
     } catch (err: any) {
-      this.logger.error(`Token list fetch error (${url}): ${err?.message}`);
+      this.logger.error(`Token list fetch failed (${url}): ${err?.message}`);
       return [];
     }
   }
 
-  // MD5 of sorted addresses — fast, deterministic
   private hashList(tokens: any[]): string {
     const sorted = tokens.map(t => t.address?.toLowerCase() ?? "").sort().join(",");
     return crypto.createHash("md5").update(sorted).digest("hex");

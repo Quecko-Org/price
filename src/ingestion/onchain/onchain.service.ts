@@ -66,7 +66,7 @@ export class OnchainService implements OnModuleInit {
       this.logger.warn(`${config.name}: no provider (connection failed or timed out) — skipping`);
       return;
     }
-
+ 
     this.logger.log(`⛓  Booting ${config.name}...`);
 
     if (config.hasV4 && config.uniswapV4PoolManager) {

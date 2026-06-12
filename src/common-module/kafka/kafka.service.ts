@@ -39,7 +39,7 @@ export interface FxRateMessage {
 @Injectable()
 export class KafkaService implements OnModuleInit,OnModuleDestroy {
   private readonly logger = new Logger(KafkaService.name);
-  private producer: Producer;
+  private producer!: Producer;
 
   private readonly kafka = new Kafka({
     clientId: 'price-aggregator-producer',

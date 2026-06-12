@@ -32,9 +32,9 @@ const V4_DEPLOY_BLOCKS: Partial<Record<Chain, number>> = {
   [Chain.POLYGON]:  68000000,
 };
 
+ 
 
-
-const CHUNK_SIZE = 10; // blocks per getLogs call
+const CHUNK_SIZE = 2000; // blocks per getLogs call
 
 @Injectable()
 export class UniswapV4DiscoveryService {
@@ -93,7 +93,7 @@ export class UniswapV4DiscoveryService {
 
 async backfill(chainId: Chain, provider: ethers.WebSocketProvider): Promise<void> {
   await this.init(chainId);
-
+let p= new ethers.JsonRpcProvider("https://damp-responsive-patina.quiknode.pro/74d8bb211b35da533b021e761c494bfc957e5a30/")
   const config      = CHAIN_CONFIGS[1];
   const deployBlock = V4_DEPLOY_BLOCKS[chainId];
 
@@ -118,7 +118,7 @@ async backfill(chainId: Chain, provider: ethers.WebSocketProvider): Promise<void
 
   // FIX: Number() cast — pg bigint comes back as string, + would concatenate
   const startBlock = Number(syncState.lastScannedBlock) + 1;
-  const latest     = await provider.getBlockNumber();
+  const latest     = await p.getBlockNumber();
 
   if (startBlock > latest) {
     this.logger.log(`${config.name} V4: already up to date (block ${latest})`);
@@ -139,7 +139,7 @@ async backfill(chainId: Chain, provider: ethers.WebSocketProvider): Promise<void
     const end = Math.min(start + CHUNK_SIZE - 1, latest);
 
     try {
-      const logs = await provider.getLogs({
+      const logs = await p.getLogs({
         address:   config.uniswapV4PoolManager,
         fromBlock: start,
         toBlock:   end,
@@ -147,6 +147,7 @@ async backfill(chainId: Chain, provider: ethers.WebSocketProvider): Promise<void
       });
 
       if (logs.length) {
+        console.log("logs.length",start,end)
         this.logger.log(`📦 ${config.name} ${start}→${end}: ${logs.length} pools`);
         poolsFound += logs.length;
       }

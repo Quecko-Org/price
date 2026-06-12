@@ -4,7 +4,7 @@
 import { intervalTable } from '@/common/utils/interval.util';
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-
+ 
 @Injectable()
 export class MarketsRepository {
 

@@ -25,7 +25,7 @@ export class MarketDataSyncService {
 
   constructor(
     @InjectRepository(SymbolExchangeEntity)
-    private readonly seRepo: Repository<SymbolExchangeEntity>,
+    private readonly seRepo: Repository<SymbolExchangeEntity>, 
     @InjectRepository(SymbolEntity)
     private readonly symbolRepo: Repository<SymbolEntity>,
     private readonly binance:     BinanceService,
@@ -39,8 +39,8 @@ export class MarketDataSyncService {
   // Symbols change rarely (new listings, delistings).
   // SymbolsService uses Redis hash — if nothing changed, DB write is skipped.
   // Running every 30min is more than frequent enough.
-  // @Cron('0 */30 * * * *')
-  @Cron('*/1 * * * *')  
+  @Cron('0 */30 * * * *')
+  // @Cron('*/1 * * * *')   
   async syncAllExchanges() {
     if (this.syncRunning) {
       this.logger.warn('Symbol sync already running — skipping');
