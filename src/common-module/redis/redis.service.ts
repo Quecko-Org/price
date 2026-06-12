@@ -1,72 +1,42 @@
-// ============================================================
-// redis-cache.service.ts
-//
-// WHY Redis:
-//   PriceCacheService is currently a plain in-memory Map.
-//   That means:
-//   - If you run 2 instances (PM2 cluster, K8s pods), each has its
-//     own Map → prices diverge → API returns inconsistent data.
-//   - On restart, price cache is cold for ~1 minute.
-//   - API reads hit TimescaleDB even for latest price (heavy query).
-//
-// Redis fixes all three:
-//   - Shared across all instances (single source of truth)
-//   - Survives restarts (persisted via AOF)
-//   - API reads latest price in ~0.2ms (no DB query)
-//
-// KEY SCHEMA:
-//   price:{symbol}           → latest USD price  (string, TTL 2min)
-//   candle:latest:{marketId} → latest aggregated candle (JSON, TTL 2min)
-//   fx:rates                 → fiat rate map (JSON, TTL 10min)
-//   stats24h:{marketId}      → 24h stats (JSON, TTL 1min)
-//
-// PUB/SUB CHANNEL:
-//   live:candle:{marketId}   → published on every minute close
-//   (WebSocket gateway subscribes and pushes to connected clients)
-// ============================================================
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
 
-const TTL = {
-  PRICE: 120,  // 2 min — refreshed on every candle close
-  CANDLE: 120,  // 2 min
-  FX: 600,  // 10 min
-  STATS: 60,   // 1 min
-};
+const TTL = { PRICE: 120, CANDLE: 120, FX: 600, STATS: 60 };
+
+function buildOpts() {
+  return {
+    host:                 process.env.REDIS_HOST     ?? 'localhost',
+    port:                 Number(process.env.REDIS_PORT ?? 6379),
+    // || undefined so empty string doesn't get sent as password
+    password:             process.env.REDIS_PASSWORD || undefined,
+    retryStrategy:        (times: number) => Math.min(times * 200, 3_000),
+    enableReadyCheck:     true,
+    maxRetriesPerRequest: 3,
+  };
+}
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
-  private client: Redis;
-  private publisher: Redis; // separate connection for PUBLISH (ioredis rule)
+  private client:     Redis;
+  private publisher:  Redis;
   private subscriber: Redis;
 
   constructor() {
-    const opts = {
-      host: process.env.REDIS_HOST ?? 'localhost',
-      port: Number(process.env.REDIS_PORT ?? 6378),
-      password: process.env.REDIS_PASSWORD,
-      retryStrategy: (times: number) => Math.min(times * 200, 3_000),
-      enableReadyCheck: true,
-      maxRetriesPerRequest: 3,
-    };
-
-    this.client = new Redis(opts);
-    this.publisher = new Redis(opts);
+    const opts = buildOpts();
+    this.client     = new Redis(opts);
+    this.publisher  = new Redis(opts);
     this.subscriber = new Redis(opts);
 
-    this.client.on('error', e => this.logger.error('Redis client error', e));
-    this.publisher.on('error', e => this.logger.error('Redis publisher error', e));
-    this.subscriber.on('error', e => this.logger.error('Redis subscriber error', e));
-
-    this.logger.log('✅ Redis connected');
-
-
+    this.client.on('connect',     () => this.logger.log('✅ Redis client connected'));
+    this.publisher.on('connect',  () => this.logger.log('✅ Redis publisher connected'));
+    this.subscriber.on('connect', () => this.logger.log('✅ Redis subscriber connected'));
+    this.client.on('error',     e => this.logger.error(`Redis client error: ${e?.message}`));
+    this.publisher.on('error',  e => this.logger.error(`Redis publisher error: ${e?.message}`));
+    this.subscriber.on('error', e => this.logger.error(`Redis subscriber error: ${e?.message}`));
   }
 
-
-  // ── PRICE ─────────────────────────────────────────────────
-  async setPrice(symbol: string, priceUsd: number) {
+  async setPrice(symbol: string, priceUsd: number): Promise<void> {
     await this.client.setex(`price:${symbol}`, TTL.PRICE, priceUsd.toString());
   }
 
@@ -76,34 +46,24 @@ export class RedisService implements OnModuleDestroy {
   }
 
   async getAllPrices(): Promise<Map<string, number>> {
-    let result
     try {
-    const keys = await this.client.keys('price:*');
+      const keys = await this.client.keys('price:*');
       if (!keys.length) return new Map();
-
       const values = await this.client.mget(...keys);
-
-      result = new Map<string, number>();
-
+      const result = new Map<string, number>();
       keys.forEach((k, i) => {
-        const symbol = k.replace('price:', '');
         const val = values[i];
-        if (val) result.set(symbol, Number(val));
+        if (val) result.set(k.replace('price:', ''), Number(val));
       });
-    } catch (er) {
-      console.log("sdds", er)
+      return result;
+    } catch (err: any) {
+      this.logger.error(`getAllPrices failed: ${err?.message}`);
+      return new Map();
     }
-    return result;
-
   }
 
-  // ── LATEST CANDLE ─────────────────────────────────────────
-  async setLatestCandle(marketId: number, candle: object) {
-    await this.client.setex(
-      `candle:latest:${marketId}`,
-      TTL.CANDLE,
-      JSON.stringify(candle)
-    );
+  async setLatestCandle(marketId: number, candle: object): Promise<void> {
+    await this.client.setex(`candle:latest:${marketId}`, TTL.CANDLE, JSON.stringify(candle));
   }
 
   async getLatestCandle(marketId: number): Promise<object | null> {
@@ -111,13 +71,8 @@ export class RedisService implements OnModuleDestroy {
     return v ? JSON.parse(v) : null;
   }
 
-  // ── 24H STATS ─────────────────────────────────────────────
-  async set24hStats(marketId: number, stats: object) {
-    await this.client.setex(
-      `stats24h:${marketId}`,
-      TTL.STATS,
-      JSON.stringify(stats)
-    );
+  async set24hStats(marketId: number, stats: object): Promise<void> {
+    await this.client.setex(`stats24h:${marketId}`, TTL.STATS, JSON.stringify(stats));
   }
 
   async get24hStats(marketId: number): Promise<object | null> {
@@ -125,8 +80,7 @@ export class RedisService implements OnModuleDestroy {
     return v ? JSON.parse(v) : null;
   }
 
-  // ── FX RATES ──────────────────────────────────────────────
-  async setFxRates(rates: Record<string, number>) {
+  async setFxRates(rates: Record<string, number>): Promise<void> {
     await this.client.setex('fx:rates', TTL.FX, JSON.stringify(rates));
   }
 
@@ -135,38 +89,31 @@ export class RedisService implements OnModuleDestroy {
     return v ? JSON.parse(v) : null;
   }
 
-  // ── PUB/SUB — live candle broadcast ───────────────────────
-  // Published after every minute close so WebSocket gateway
-  // can push updates to subscribed clients without polling DB.
-  async publishLiveCandle(marketId: number, candle: object) {
-    await this.publisher.publish(
-      `live:candle:${marketId}`,
-      JSON.stringify(candle)
-    );
+  async publishLiveCandle(marketId: number, candle: object): Promise<void> {
+    await this.publisher.publish(`live:candle:${marketId}`, JSON.stringify(candle));
   }
 
-
-  // Returns a subscriber connection — caller owns disconnect
   createSubscriber(): Redis {
-    return new Redis({
-      host: process.env.REDIS_HOST ?? 'localhost',
-      port: Number(process.env.REDIS_PORT ?? 6378),
-      password: process.env.REDIS_PASSWORD,
-    });
+    return new Redis(buildOpts());
   }
 
-  // ── GENERIC ───────────────────────────────────────────────
   async get(key: string): Promise<string | null> {
     return this.client.get(key);
   }
 
-  async setex(key: string, ttl: number, value: string) {
-    return this.client.setex(key, ttl, value);
+  async setex(key: string, ttl: number, value: string): Promise<void> {
+    await this.client.setex(key, ttl, value);
   }
 
-  async onModuleDestroy() {
-    await this.client.quit();
-    await this.publisher.quit();
-    await this.subscriber.quit();
+  async del(key: string): Promise<void> {
+    await this.client.del(key);
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await Promise.allSettled([
+      this.client.quit(),
+      this.publisher.quit(),
+      this.subscriber.quit(),
+    ]);
   }
 }
