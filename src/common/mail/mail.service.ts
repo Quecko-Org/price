@@ -8,7 +8,6 @@ export class MailService {
 
   constructor() {
     sgMail.setApiKey(process.env.SENDGRID_API_KEY||"");
-
   }
 
   async sendMail(options: {
